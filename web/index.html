@@ -1,0 +1,1782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osu!standard · web port</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; --ink: #eee; --muted: #9ab; --panel: rgba(14, 14, 22, .95); --line: #2a2a3a; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { background: #07070c; color: var(--ink); font: 15px/1.4 "Inter", system-ui, sans-serif; overflow: hidden; }
+  button, select, input, label { font: inherit; color: inherit; }
+  button { background: #1d1d2b; color: var(--ink); border: 1px solid #333; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #667; background: #25253a; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.wait { border-color: #e7a; color: #e7a; }
+  button.keybtn { min-width: 96px; font-weight: 700; }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  /* The canvas covers the whole window; the menus and panels sit on top of it. */
+  #stage { position: fixed; inset: 0; background: #000; touch-action: none; overflow: hidden; }
+  #gl, #hud { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The beatmap video sits under the canvas, covering the window like a background. */
+  #bgVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+  #hud { pointer-events: none; }
+  /* The game draws its own cursor during a round, so the system pointer is hidden. */
+  #stage.hide-cursor, #stage.hide-cursor * { cursor: none; }
+  #ui { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  #ui > .screen, #ui > .overlay { pointer-events: auto; }
+
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center;
+    background: radial-gradient(ellipse at 50% 40%, rgba(40, 28, 80, .55), rgba(6, 6, 12, .95) 70%); }
+  .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, .6); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+    max-width: min(92vw, 820px); max-height: 92vh; overflow: auto; }
+  .logo { font-size: clamp(64px, 14vw, 128px); font-weight: 800; line-height: 1; letter-spacing: -.04em; color: #ff66aa; text-shadow: 0 4px 30px rgba(255, 102, 170, .35); }
+  .logo.small { font-size: clamp(40px, 8vw, 64px); }
+  .tag { color: var(--muted); margin: -6px 0 12px; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+  .menu-buttons { display: flex; flex-direction: column; gap: 10px; width: min(340px, 84vw); }
+  .menu-buttons button { font-size: 17px; font-weight: 700; padding: 13px 18px; border: 0; border-radius: 10px; background: var(--c, #333a5e); color: #fff; }
+  .menu-buttons button:hover:not(:disabled) { filter: brightness(1.12); background: var(--c, #333a5e); }
+  .menu-buttons button:disabled { opacity: .35; }
+  h2 { margin: 0; font-size: 22px; }
+  .primary { background: #6644cc; border-color: #6644cc; font-weight: 700; }
+
+  /* Song select: maps on the left, the chosen map's difficulty and options on the right. */
+  #select { align-items: stretch; justify-content: flex-start; padding: 0; text-align: left; gap: 0; overflow: auto; }
+  .select-head { padding: 16px 20px; border-bottom: 1px solid #222; background: #0c0c14; }
+  .select-head h2 { font-size: 18px; }
+  .select-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 16px; padding: 16px 20px; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .col-actions { display: flex; gap: 8px; }
+  #lib { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+  #lib button.item { text-align: left; background: #151523; border: 1px solid #262636; word-break: break-word; }
+  #lib button.item[aria-pressed="true"] { border-color: #6644cc; background: #241c44; }
+  #lib button.item { display: flex; align-items: center; gap: 10px; }
+  #lib button.item span { min-width: 0; }
+  #lib .cover { width: 96px; height: 54px; object-fit: cover; border-radius: 4px; flex: none; background: #0b0b14; }
+  #drop { border: 1px dashed #334; border-radius: 12px; padding: 22px; color: #aab; }
+  #drop.over { background: rgba(60, 80, 160, .25); border-color: #7af; }
+  .check { display: flex; align-items: center; gap: 8px; }
+  .mods { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .mod { padding: 5px 9px; font-size: 13px; font-weight: 700; }
+  .mod[aria-pressed="true"] { border-color: #b9f; background: #3b2f6e; color: #fff; }
+  .mods-note { margin-top: 8px; font-size: 13px; }
+  .select-foot { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-top: 1px solid #222; background: #0c0c14; }
+  .select-foot .muted { margin-left: auto; }
+
+  /* Results: the grade in the colour the game gives it, then the numbers. */
+  .grade { font-size: clamp(90px, 22vw, 180px); font-weight: 800; line-height: 1; text-shadow: 0 6px 40px rgba(0, 0, 0, .6); }
+  .verdict { font-size: 22px; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; width: min(640px, 88vw); }
+  .stat { background: #12121c; border: 1px solid #222; border-radius: 10px; padding: 10px; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+
+  /* Settings */
+  .settings-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; width: 100%; }
+  .settings-row > span { color: var(--muted); min-width: 6em; }
+  #settings .panel { width: min(92vw, 900px); align-items: stretch; text-align: left; }
+  #more { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 4px 22px; }
+  #more h3 { grid-column: 1 / -1; margin: 10px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .setting { display: flex; align-items: center; gap: 8px; color: #ccd; cursor: pointer; }
+  .setting span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .setting output { min-width: 3.5em; text-align: right; color: #789; font-variant-numeric: tabular-nums; }
+  .setting.off { opacity: .4; }
+  .setting input[type=range] { width: 110px; }
+  .setting select { min-width: 88px; }
+
+  /* Status line, top right. Hidden during a round. */
+  #status { position: fixed; top: 12px; right: 14px; z-index: 3; color: var(--muted); font-size: 13px; text-align: right; pointer-events: none; max-width: 60vw; }
+  #status.err { color: #f88; }
+  /* Says why a beatmap's video is not shown. Shown during a round too, unlike the status line. */
+  #videoNote { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: none;
+    color: #fc9; font-size: 13px; background: rgba(0, 0, 0, .55); padding: 4px 10px; border-radius: 6px; max-width: 80vw; text-align: center; }
+  #videoNote:empty { display: none; }
+  body[data-screen="play"] #status { display: none; }
+  @media (max-width: 720px) { .select-body { grid-template-columns: 1fr; } #lib { flex: none; max-height: 40vh; } }
+</style>
+</head>
+<body data-screen="menu">
+<input type="file" id="file" accept=".osz,.zip" hidden>
+<input type="file" id="sf" accept=".osk,.zip" hidden>
+
+<div id="stage">
+  <video id="bgVideo" muted playsinline preload="auto" hidden></video>
+  <canvas id="gl"></canvas>
+  <canvas id="hud"></canvas>
+</div>
+
+<div id="ui">
+  <section id="menu" class="screen" aria-label="Main menu">
+    <div class="logo">osu!</div>
+    <div class="tag">standard · web port · <span id="build">build 2026-10-13 · lazer HUD scale</span></div>
+    <div class="menu-buttons">
+      <button id="menuPlay" style="--c:#6644cc">Play</button>
+      <button id="menuEdit" style="--c:#8a6400" disabled title="Not in this port yet">Edit</button>
+      <button id="settingsBtn" style="--c:#4b4b55" aria-expanded="false">Settings</button>
+      <button id="menuExit" style="--c:#a81d5e">Exit</button>
+    </div>
+  </section>
+
+  <section id="playmenu" class="screen" aria-label="Play" hidden>
+    <div class="logo small">Play</div>
+    <div class="menu-buttons">
+      <button id="menuSolo" style="--c:#6644cc">Solo</button>
+      <button disabled style="--c:#5e3fba" title="Not in this port yet">Multiplayer</button>
+      <button disabled style="--c:#5e3fba" title="Not in this port yet">Playlists</button>
+      <button id="backPlay" style="--c:#333a5e">Back</button>
+    </div>
+  </section>
+
+  <section id="select" class="screen" aria-label="Song select" hidden>
+    <div class="select-head"><h2 id="info">Select a beatmap</h2></div>
+    <div class="select-body">
+      <div class="col">
+        <div class="col-actions">
+          <button id="open">Open .osz</button>
+          <button id="delMap" hidden>Forget</button>
+        </div>
+        <div id="lib" aria-label="Saved beatmaps"></div>
+        <div id="libEmpty" class="muted">No saved beatmaps yet. Open a .osz file, or drop one anywhere on the page.</div>
+      </div>
+      <div class="col">
+        <div id="drop">Drop a <b>.osz</b> beatmap here, or use <b>Open .osz</b>.
+          <div class="muted" style="margin-top:8px">Keys: <span id="dropKeys"></span></div>
+        </div>
+        <label>Difficulty <select id="diff" aria-label="Difficulty" disabled></select></label>
+        <label class="check"><input type="checkbox" id="auto"> Autoplay</label>
+        <div class="mods" id="mods" role="group" aria-label="Mods"></div>
+        <div class="muted mods-note" id="modsNote" hidden></div>
+      </div>
+    </div>
+    <div class="select-foot">
+      <button id="backSelect">Back</button>
+      <button id="selectSettings">Settings</button>
+      <button id="play" class="primary" disabled>Play</button>
+      <span class="muted">Enter plays · Esc goes back</span>
+    </div>
+  </section>
+
+  <section id="result" class="screen" aria-label="Results" hidden>
+    <div id="grade" class="grade">–</div>
+    <div id="resultText"></div>
+    <div class="menu-buttons">
+      <button id="retry" class="primary">Retry (R)</button>
+      <button id="quit" style="--c:#333a5e">Back to select</button>
+    </div>
+  </section>
+
+  <section id="pause" class="overlay" aria-label="Paused" hidden>
+    <div class="panel">
+      <h2>Paused</h2>
+      <div class="menu-buttons">
+        <button id="resume" class="primary">Continue (Esc)</button>
+        <button id="retryP" style="--c:#333a5e">Retry (R)</button>
+        <button id="pauseSettings" style="--c:#4b4b55">Settings</button>
+        <button id="quitP" style="--c:#a81d5e">Back to select</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings" class="overlay" aria-label="Settings" hidden>
+    <div class="panel">
+      <h2>Settings</h2>
+      <div class="settings-row">
+        <span>Keys</span>
+        <button id="k0" class="keybtn" aria-label="Rebind first key"></button>
+        <button id="k1" class="keybtn" aria-label="Rebind second key"></button>
+        <label><input type="checkbox" id="mouse"> Mouse button</label>
+      </div>
+      <div class="settings-row">
+        <span>Skip intro</span>
+        <button id="kskip" class="keybtn" aria-label="Rebind skip intro key"></button>
+      </div>
+      <div class="settings-row">
+        <span>Skin</span>
+        <select id="skin" aria-label="Skin"></select>
+        <button id="addSkin">Add .osk</button>
+        <button id="delSkin" hidden>Remove</button>
+      </div>
+      <div id="more"></div>
+      <small class="muted">Click a key button, then press the key to bind it (Esc cancels). Esc pauses, R restarts. Pausing also happens when the window loses focus. Esc and R cannot be bound to play keys.</small>
+      <div><button id="closeSettings">Back</button></div>
+    </div>
+  </section>
+</div>
+
+<div id="status">Loading core…</div>
+<div id="videoNote"></div>
+
+<script type="module">
+import { loadCore, RES, KIND } from "./core.js";
+import { readZip } from "./zip.js";
+import { createRenderer, viewFor, PF_W, PF_H, OBJECT_PAD, FOLLOW_PAD } from "./renderer.js";
+import { loadSkinFile } from "./skin.js";
+import { listSkins, saveSkin, deleteSkin, listMaps, saveMap, deleteMap } from "./storage.js";
+import { applyStored, buildSettingsPanel } from "./settings.js";
+import { buildArgonSkin } from "./argon.js";
+import { webmFor } from "./transcode.js";
+import { MODS, mapText, failBits, rateOf, modsLabel, toggleMod, loadStoredMods, storeMods, flashlightRadius, FOLLOW_DELAY_MS } from "./mods.js";
+import { createSongClock } from "./song_clock.js";
+import { createResume, RESUME_HIT } from "./resume.js";
+
+const $ = (s) => document.querySelector(s);
+const statusEl = $("#status");
+const glCanvas = $("#gl");
+const stageEl = $("#stage");
+const LABEL = { [RES.GREAT]: "Great", [RES.OK]: "Ok", [RES.MEH]: "Meh", [RES.MISS]: "Miss" };
+// The rank colours from OsuColour.ForRank in lazer.
+const RANK_COLOURS = { X: "#de31ae", S: "#02b5c3", A: "#88da20", B: "#e3b130", C: "#ff8e5d", D: "#ff5a5a", F: "#3f3f3f" };
+
+// ScoreProcessor.RankFromScore: X needs every hit at 300; below that, the accuracy cutoffs.
+// A failed round is F.
+function rankFor(accuracy, failed) {
+  if (failed) return "F";
+  if (accuracy === 1) return "X";
+  if (accuracy >= 0.95) return "S";
+  if (accuracy >= 0.9) return "A";
+  if (accuracy >= 0.8) return "B";
+  if (accuracy >= 0.7) return "C";
+  return "D";
+}
+
+// ---- settings (saved in localStorage; storage can be blocked, so every access is guarded) ----
+const SETTINGS_KEY = "osuport.settings";
+const RESERVED = new Set(["Escape", "KeyR"]);
+function loadSettings() {
+  const s = {
+    keys: [{ code: "KeyZ", label: "Z" }, { code: "KeyX", label: "X" }],
+    skip: { code: "Space", label: "Space" },   // skips the intro of a map
+    mouse: true,
+    skin: "",
+  };
+  let j = null;
+  try {
+    j = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (j && Array.isArray(j.keys) && j.keys.length === 2 && j.keys.every((k) => k && typeof k.code === "string")) {
+      s.keys = j.keys.map((k) => ({ code: k.code, label: String(k.label || k.code) }));
+    }
+    // the skip key must not be reserved or the same as a play key
+    if (j && j.skip && typeof j.skip.code === "string" && !RESERVED.has(j.skip.code)
+        && !s.keys.some((k) => k.code === j.skip.code)) {
+      s.skip = { code: j.skip.code, label: String(j.skip.label || j.skip.code) };
+    }
+    if (j && typeof j.mouse === "boolean") s.mouse = j.mouse;
+    if (j && typeof j.skin === "string") s.skin = j.skin;
+  } catch (_) {
+    // unreadable settings fall back to the defaults
+  }
+  return applyStored(s, j);
+}
+const S = loadSettings();
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(S));
+  } catch (_) {
+    // not persisted; the settings still apply for this visit
+  }
+}
+
+// ---- state ----
+let core = null;
+let renderer = null;
+let zipEntries = null;      // Map from the loaded .osz
+let difficulties = [];      // [{ name, text, meta, objects }]
+let songBuffer = null;
+let audioCtx = null;
+let source = null;
+const clock = createSongClock();   // the song position on the audio clock, through pauses (song_clock.js)
+let spinMute = null;        // gain between the song and the music gain: silent once a pause has stopped the song
+let silentFrom = null;      // audio time the mute begins, after a pause starts
+let resumePrompt = null;
+let roundStartMs = 0;       // the song time the round's clock starts at (before the lead-in), for the progress pie
+let errorSeen = null;       // Uint8Array: records already sent to the hit error bar
+let hitErrors = [];         // { offset, res, at }: hits for the hit error bar (lazer's LegacyBarHitErrorMeter)    // lazer's resume prompt, once a pause is ended with the pointer on the page (resume.js)
+let playing = false;        // a round is loaded and the loop should update it
+let paused = false;
+let finished = false;       // the round ended (completed or failed); the result is shown
+let perfStart = 0;          // wall clock at play start, for rounds without a song
+let pausedAt = 0;
+let pausedTotal = 0;        // ms spent paused, for rounds without a song
+let cursor = { x: 256, y: 192 };
+let cursorPrev = { x: 256, y: 192 };
+let cursorAngle = 0;        // rotation from movement (cursor rotation setting)
+let roundBox = null;        // [x0, y0, x1, y1]: the playfield plus what the loaded map's notes reach
+let view = viewFor(0, 0, PF_W, PF_H);   // the area the canvas shows, in playfield units
+const cursorTrail = [];     // recent cursor positions: { x, y, t }
+let lastDraw = null;        // the last frame drawn, so a skin change can redraw a paused round
+let musicGain = null;       // audio routing, created with the audio context
+let fxGain = null;
+let beatmapCombos = false;  // the loaded beatmap sets its own combo colours
+let mods = loadStoredMods();  // the mods chosen on song select (mods.js)
+let playRate = 1;           // the song's speed this round (rate mods): song ms per real ms
+let flashlight = null;      // where the flashlight is now: { x, y, t } in playfield units
+let queued = [];            // { t, x, y, mask } presses waiting for the next frame
+const held = new Set();     // e.code of bound keys that are down
+const pressCounts = [0, 0, 0, 0];  // presses this round: key 1, key 2, left and right mouse buttons (the legacy key counter)
+// Whether the left (M1) and right (M2) mouse buttons are held. pointerHeld is kept as the old name for "any".
+const mouseHeld = [false, false];
+let pointerHeld = false;
+let rebindIndex = -1;       // which key button is waiting for a key (-1 = none)
+let lastHits = 0;
+const botDone = new Set();  // autoplay: objects already pressed this round
+let skin = null;            // the imported skin in use { colours, images, hit ... }; null = the default look
+let argonSkin = null;       // the default look as Argon note sprites (argon.js), once built
+let roundSkin = null;       // the beatmap's own skin files for the round, when it has any (settings: Beatmap skins)
+let archiveBlob = null;     // the beatmap archive open now, so its skin files can be read
+let skinRecords = [];       // imported skins: [{ name, blob }]
+let savedMaps = [];         // beatmaps kept in browser storage: [{ name, blob }]
+let openedName = "";        // the saved name of the open beatmap, if it has one
+let screen = "menu";        // menu | playmenu | select | play | result
+let skinSeq = 0;
+// Decodes skin sounds without an AudioContext, so it needs no user gesture.
+const decodeCtx = new OfflineAudioContext(1, 1, 44100);
+
+// ---- setup ----
+try {
+  core = await loadCore("./osu_core.wasm");
+  renderer = createRenderer(glCanvas, $("#hud"));
+  statusEl.textContent = "Core loaded.";
+} catch (err) {
+  statusEl.textContent = "Failed to load the core: " + err.message;
+  statusEl.classList.add("err");
+}
+
+// ---- screens ----
+// The menus are full-window panels over the canvas, one at a time. The pause and settings panels
+// can sit over a round.
+const MENUS = ["menu", "playmenu", "select", "result"];
+function showScreen(name) {
+  screen = name;
+  document.body.dataset.screen = name;
+  for (const id of MENUS) $("#" + id).hidden = id !== name;
+  $("#pause").hidden = true;
+}
+function openSettings() {
+  $("#settings").hidden = false;
+  $("#settingsBtn").setAttribute("aria-expanded", "true");
+}
+function closeSettings() {
+  $("#settings").hidden = true;
+  $("#settingsBtn").setAttribute("aria-expanded", "false");
+}
+$("#menuPlay").onclick = () => showScreen("playmenu");
+$("#menuSolo").onclick = () => showScreen("select");
+$("#backPlay").onclick = () => showScreen("menu");
+$("#backSelect").onclick = () => showScreen("playmenu");
+$("#menuExit").onclick = () => {
+  statusEl.textContent = "Close this tab to exit.";
+  statusEl.classList.remove("err");
+};
+$("#settingsBtn").onclick = () => ($("#settings").hidden ? openSettings() : closeSettings());
+$("#closeSettings").onclick = closeSettings;
+$("#pauseSettings").onclick = openSettings;
+$("#selectSettings").onclick = openSettings;
+
+// ---- settings UI ----
+function labelOf(e) {
+  if (e.key === " ") return "Space";
+  return e.key.length === 1 ? e.key.toUpperCase() : e.key;
+}
+const KEY_BUTTONS = ["#k0", "#k1", "#kskip"];
+const binding = (i) => (i === 2 ? S.skip : S.keys[i]);
+const setBinding = (i, b) => { if (i === 2) S.skip = b; else S.keys[i] = b; };
+function renderSettings() {
+  KEY_BUTTONS.forEach((id, i) => {
+    const b = $(id);
+    b.textContent = rebindIndex === i ? "Press a key…" : binding(i).label;
+    b.classList.toggle("wait", rebindIndex === i);
+  });
+  $("#mouse").checked = S.mouse;
+  $("#dropKeys").textContent = `${S.keys[0].label} / ${S.keys[1].label}${S.mouse ? " or the mouse button" : ""}`;
+}
+renderSettings();
+const refreshMore = buildSettingsPanel($("#more"), S, (key, value) => {
+  S[key] = value;
+  saveSettings();
+  if (key === "volMusic" && musicGain) musicGain.gain.value = value;
+  if (key === "volFx" && fxGain) fxGain.gain.value = value;
+  if (key === "defaultLook") applySkin();   // the look changes at once, paused rounds included
+  refreshMore();
+});
+refreshMore();
+[0, 1, 2].forEach((i) => {
+  $(KEY_BUTTONS[i]).onclick = (e) => {
+    e.currentTarget.blur();
+    rebindIndex = i;
+    renderSettings();
+  };
+});
+$("#mouse").onchange = (e) => {
+  S.mouse = e.target.checked;
+  saveSettings();
+  renderSettings();
+};
+
+// ---- keyboard and pointer input ----
+// Bindings use physical key codes (e.code), so they work on any keyboard layout.
+addEventListener("keydown", (e) => {
+  if (rebindIndex >= 0) {
+    e.preventDefault();
+    if (e.code === "Escape") {
+      rebindIndex = -1;
+    } else if (!e.repeat) {
+      if (RESERVED.has(e.code)) {
+        statusEl.textContent = "Esc and R are reserved for pause and restart.";
+      } else {
+        // The bindings stay different: a key another binding uses takes this binding's old key.
+        const mine = binding(rebindIndex);
+        const other = [0, 1, 2].find((j) => j !== rebindIndex && binding(j).code === e.code);
+        if (other !== undefined) setBinding(other, mine);
+        setBinding(rebindIndex, { code: e.code, label: labelOf(e) });
+        saveSettings();
+      }
+      rebindIndex = -1;
+    }
+    renderSettings();
+    return;
+  }
+  if (e.code === "Escape") {
+    e.preventDefault();
+    // The same Escape that released the lock (and paused) must not resume the round straight away.
+    if (paused && performance.now() - lockLostPauseAt < 500) return;
+    if (!$("#settings").hidden) closeSettings();
+    else if (resumePrompt && resumePrompt.waiting) cancelPrompt();   // as lazer's Pause does during the prompt
+    else if (playing && !finished) setPaused(!paused);
+    else if (screen === "result") quitToSelect();
+    else if (screen === "select") showScreen("playmenu");
+    else if (screen === "playmenu") showScreen("menu");
+    return;
+  }
+  if (e.code === "KeyR" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (difficulties.length && (screen === "play" || screen === "result")) {
+      e.preventDefault();
+      if (!e.repeat) startPlay();
+    }
+    return;
+  }
+  if (e.code === "Enter" && screen === "select" && !$("#play").disabled) {
+    e.preventDefault();
+    if (!e.repeat) startPlay();
+    return;
+  }
+  if (e.code === S.skip.code) {
+    if (playing && !paused && !finished) {
+      e.preventDefault();
+      if (!e.repeat) skipIntro();
+    }
+    return;
+  }
+  // While the resume prompt waits, a play key pressed on the orange cursor resumes (lazer's buttons do too).
+  if (resumePrompt && resumePrompt.waiting && !e.repeat && S.keys.some((k) => k.code === e.code)) {
+    e.preventDefault();
+    clickPrompt();
+    return;
+  }
+  const idx = S.keys.findIndex((k) => k.code === e.code);
+  if (idx < 0) return;
+  e.preventDefault();
+  if (e.repeat || !playing || paused || finished || $("#auto").checked || held.has(e.code)) return;
+  held.add(e.code);
+  pressCounts[idx] += 1;
+  queued.push({ t: songMs(e.timeStamp), x: cursor.x, y: cursor.y, mask: 1 << idx });
+});
+addEventListener("keyup", (e) => {
+  held.delete(e.code);
+});
+// Losing focus releases every key and pauses the round, as in the original game.
+addEventListener("blur", () => {
+  held.clear();
+  releaseMouse();
+  if (playing && !finished && !paused) setPaused(true);
+  else if (resumePrompt && resumePrompt.waiting) cancelPrompt();
+});
+
+// The canvas shows the round's view, so a point on screen maps onto that area.
+function screenToPlayfield(px, py) {
+  const r = glCanvas.getBoundingClientRect();
+  return {
+    x: view.x + ((px - r.left) / r.width) * view.w,
+    y: view.y + ((py - r.top) / r.height) * view.h,
+  };
+}
+function toPlayfield(e) {
+  return screenToPlayfield(e.clientX, e.clientY);
+}
+// High precision mouse: during a round the cursor moves only by the mouse's own movement, scaled by the
+// sensitivity, as in osu!. Nothing else sets it while a round runs, so a click or a stale pointer position
+// (the system pointer is frozen while locked) cannot make it snap. The movement is read from the window, so
+// it still counts when the pointer is not locked.
+function rawCursor() {
+  return S.relative && playing && !paused && !finished;
+}
+// The pointer's last position on screen. Without high precision, the cursor is that point mapped
+// onto the view every frame, so a move made while the menus are still up counts once the round starts.
+let pointerAt = null;
+// Whether the pointer is over the page: a move puts it there, and leaving the window takes it away.
+let pointerOver = false;
+// Unadjusted mouse counts (no OS acceleration) once the lock has accepted them: 1 count is about one
+// device pixel, so they are turned into CSS pixels to keep sensitivity 1 the same speed as the pointer.
+let rawCounts = false;
+// The next move only starts counting. Set after the pointer leaves the page, the lock changes or high
+// precision is not in use: the movement across that gap is not the hand moving, so it is not counted.
+let rebase = true;
+addEventListener("pointermove", (e) => {
+  pointerOver = true;
+  if (!rawCursor()) {
+    pointerAt = { x: e.clientX, y: e.clientY };
+    rebase = true;
+    return;
+  }
+  if (rebase) {
+    rebase = false;
+    return;
+  }
+  const k = rawCounts ? 1 / (window.devicePixelRatio || 1) : 1;
+  const dx = e.movementX * k;
+  const dy = e.movementY * k;
+  // A single move larger than half the window is the pointer coming back onto the page, not a flick.
+  const limit = 0.5 * Math.max(innerWidth, innerHeight);
+  if (Math.abs(dx) > limit || Math.abs(dy) > limit) return;
+  const r = glCanvas.getBoundingClientRect();
+  cursor = {
+    x: Math.min(view.x + view.w, Math.max(view.x, cursor.x + dx * (view.w / r.width) * S.sensitivity)),
+    y: Math.min(view.y + view.h, Math.max(view.y, cursor.y + dy * (view.h / r.height) * S.sensitivity)),
+  };
+});
+// The pointer leaving the window (movement is then counted from where it left) and a lock change both
+// re-base the movement. A lock that ends also stops counting unadjusted movement.
+document.addEventListener("mouseout", (e) => {
+  if (!e.relatedTarget) {
+    rebase = true;
+    pointerOver = false;
+  }
+});
+// Chrome keeps Escape for itself while the pointer is locked: the press releases the lock and never reaches
+// the page. So a lock lost while the round runs is that Escape, and the round pauses on it, at once.
+let lockHeld = false;
+let lockLostPauseAt = -Infinity;    // when a lost lock paused the round (a late Escape keydown is then ignored)
+document.addEventListener("pointerlockchange", () => {
+  rebase = true;
+  const locked = document.pointerLockElement === glCanvas;
+  if (!locked) rawCounts = false;
+  if (!locked && lockHeld && playing && !paused && !finished) {
+    pauseRound();
+    lockLostPauseAt = performance.now();
+  }
+  lockHeld = locked;
+});
+glCanvas.addEventListener("pointerdown", (e) => {
+  if ((e.button === 0 || e.button === 2) && clickPrompt()) return;
+  // A lock the browser refused (it does so for a moment after Escape released one) is asked for again on a click.
+  if (rawCursor() && !document.pointerLockElement) lockPointer();
+  if (!S.relative && !rawCursor()) cursor = toPlayfield(e);
+  // Mouse buttons come through mousedown, which fires for each button even while another is held (a
+  // second button on the same pointer gives no pointerdown). A touch is the left button.
+  if (e.pointerType !== "mouse") mousePress(0, e.timeStamp);
+});
+glCanvas.addEventListener("mousedown", (e) => {
+  if (e.button === 0) mousePress(0, e.timeStamp);
+  else if (e.button === 2) mousePress(1, e.timeStamp);
+});
+// A mouse button press in a round: M1 (left, mask 4) or M2 (right, mask 8), as lazer's osu! buttons.
+function mousePress(which, timeStamp) {
+  if (!S.mouse || !playing || paused || finished || $("#auto").checked || mouseHeld[which]) return;
+  mouseHeld[which] = true;
+  pointerHeld = true;
+  pressCounts[2 + which] += 1;
+  queued.push({ t: songMs(timeStamp), x: cursor.x, y: cursor.y, mask: which === 0 ? 4 : 8 });
+}
+function releaseMouse(which) {
+  if (which === undefined) mouseHeld.fill(false);
+  else mouseHeld[which] = false;
+  pointerHeld = mouseHeld[0] || mouseHeld[1];
+}
+addEventListener("mouseup", (e) => releaseMouse(e.button === 2 ? 1 : e.button === 0 ? 0 : undefined));
+addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") releaseMouse(0); });
+// No browser menu on right-click while a round is loaded: the mouse belongs to the game then.
+addEventListener("contextmenu", (e) => {
+  if (playing) e.preventDefault();
+});
+
+// Mask bits for the core: 1 = key 1, 2 = key 2, 4 = mouse button. Only held ones are set.
+function currentMask() {
+  let m = 0;
+  S.keys.forEach((k, i) => {
+    if (held.has(k.code)) m |= 1 << i;
+  });
+  if (S.mouse && mouseHeld[0]) m |= 4;
+  if (S.mouse && mouseHeld[1]) m |= 8;
+  return m;
+}
+
+// ---- beatmap import ----
+// Opens a beatmap archive from a File or a saved Blob. remember keeps a copy in browser storage
+// once the map has parsed, so it can be opened again from the saved list without the file.
+async function openOsz(blob, name = blob.name, remember = true) {
+  try {
+    statusEl.textContent = "Reading " + name + "…";
+    stopSource();
+    playing = false;
+    paused = false;
+    resumePrompt = null;
+    lastDraw = null;            // its records belong to the loaded map, which is about to change
+    songBuffer = null;          // the song belongs to the previous archive
+    $("#pause").hidden = true;
+    unloadVideo();
+    roundSkin = null;
+    archiveBlob = blob;
+    zipEntries = await readZip(await blob.arrayBuffer());
+    difficulties = [];
+    for (const [key, entry] of zipEntries) {
+      if (!key.endsWith(".osu")) continue;
+      const text = new TextDecoder().decode(await entry.read());
+      const mode = /^\s*Mode\s*:\s*(\d+)/im.exec(text);
+      if (mode && mode[1] !== "0") continue;          // osu!standard only
+      const ok = core.load(text);
+      if (ok !== true) continue;
+      const meta = core.meta();
+      const objects = core.topCount();
+      difficulties.push({ name: meta.version || entry.name, text, meta, objects });
+    }
+    if (!difficulties.length) throw new Error("No osu!standard difficulties found.");
+    difficulties.sort((a, b) => a.objects - b.objects);
+    $("#diff").innerHTML = difficulties
+      .map((d, i) => `<option value="${i}">${d.name.replace(/</g, "&lt;")} (${d.objects} objects)</option>`).join("");
+    $("#diff").disabled = false;
+    $("#play").disabled = false;
+    $("#drop").hidden = true;
+    const first = difficulties[0].meta;
+    let note = "";
+    if (remember) {
+      const cover = await coverFromEntries(zipEntries);
+      if (await saveMap({ name, blob, cover })) await refreshMapList();
+      else note = " (browser storage is unavailable, so this map will not be kept)";
+    }
+    openedName = name;
+    renderMapList();
+    showScreen("select");
+    $("#info").textContent = `${first.artist} – ${first.title}`;
+    statusEl.textContent = `${first.artist} – ${first.title}${note}`;
+    statusEl.classList.remove("err");
+  } catch (err) {
+    statusEl.textContent = "Could not read that file: " + err.message;
+    statusEl.classList.add("err");
+  }
+}
+$("#open").onclick = () => $("#file").click();
+$("#file").onchange = (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";          // picking the same file again should still count as a change
+  if (f) openOsz(f);
+};
+addEventListener("dragover", (e) => { e.preventDefault(); $("#drop").classList.add("over"); });
+addEventListener("dragleave", (e) => { e.preventDefault(); $("#drop").classList.remove("over"); });
+addEventListener("drop", (e) => {
+  e.preventDefault();
+  $("#drop").classList.remove("over");
+  if (e.dataTransfer.files[0]) openOsz(e.dataTransfer.files[0]);
+});
+
+// ---- saved beatmaps (kept in browser storage, see storage.js) ----
+// The background a map names in its [Events] ("0,0,"bg.jpg"", the storyboard's background), or null.
+function backgroundName(text) {
+  const m = /^0,0,"?([^",\r\n]+)"?/m.exec(text);
+  return m ? m[1].trim() : null;
+}
+const COVER_W = 240;
+const COVER_H = 135;
+// A small cover for the saved list: the background cut to a 16:9 frame. null if it cannot be read.
+async function makeCover(bytes, name) {
+  try {
+    const type = /\.png$/i.test(name) ? "image/png" : "image/jpeg";
+    const bitmap = await createImageBitmap(new Blob([bytes], { type }));
+    const c = document.createElement("canvas");
+    c.width = COVER_W;
+    c.height = COVER_H;
+    const scale = Math.max(COVER_W / bitmap.width, COVER_H / bitmap.height);
+    const w = bitmap.width * scale;
+    const h = bitmap.height * scale;
+    c.getContext("2d").drawImage(bitmap, (COVER_W - w) / 2, (COVER_H - h) / 2, w, h);
+    bitmap.close();
+    return await new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.85));
+  } catch (_) {
+    return null;
+  }
+}
+// The cover of a map, from its archive's entries: the background of its first difficulty that names one.
+async function coverFromEntries(entries) {
+  for (const [key, entry] of entries) {
+    if (!key.endsWith(".osu")) continue;
+    const name = backgroundName(new TextDecoder().decode(await entry.read()));
+    const bg = name && entries.get(name.toLowerCase());
+    if (!bg) continue;
+    return makeCover(new Uint8Array(await bg.read()), name);
+  }
+  return null;
+}
+let coverUrls = [];          // object URLs of the covers drawn in the list, released when it is drawn again
+async function refreshMapList() {
+  savedMaps = await listMaps();
+  renderMapList();
+  fillMissingCovers();
+}
+// Maps saved before covers were kept get one now, one at a time. A map with no background is marked
+// null, so it is not read again.
+let covering = null;
+function fillMissingCovers() {
+  if (covering) return covering;
+  covering = (async () => {
+    for (const name of savedMaps.filter((r) => r.cover === undefined).map((r) => r.name)) {
+      const rec = savedMaps.find((r) => r.name === name);
+      if (!rec) continue;
+      try {
+        rec.cover = await coverFromEntries(await readZip(await rec.blob.arrayBuffer()));
+      } catch (_) {
+        rec.cover = null;
+      }
+      await saveMap(rec);
+      renderMapList();
+    }
+  })().finally(() => { covering = null; });
+  return covering;
+}
+function renderMapList() {
+  for (const u of coverUrls) URL.revokeObjectURL(u);
+  coverUrls = [];
+  $("#lib").replaceChildren(...savedMaps.map((r) => {
+    const b = document.createElement("button");
+    b.className = "item";
+    b.dataset.name = r.name;
+    b.setAttribute("aria-pressed", String(r.name === openedName));
+    if (r.cover) {
+      const url = URL.createObjectURL(r.cover);
+      coverUrls.push(url);
+      const img = document.createElement("img");
+      img.className = "cover";
+      img.src = url;
+      img.alt = "";
+      b.append(img);
+    }
+    const label = document.createElement("span");
+    label.textContent = r.name.replace(/\.(osz|zip)$/i, "");
+    b.append(label);
+    b.onclick = () => openOsz(r.blob, r.name, false);
+    return b;
+  }));
+  $("#libEmpty").hidden = savedMaps.length > 0;
+  $("#delMap").hidden = !savedMaps.some((r) => r.name === openedName);
+}
+$("#delMap").onclick = async () => {
+  const name = openedName;
+  if (!savedMaps.some((r) => r.name === name)) return;
+  savedMaps = savedMaps.filter((r) => r.name !== name);
+  await deleteMap(name);
+  renderMapList();                       // a map that is open keeps playing; only the saved copy goes
+};
+
+// ---- beatmap video ----
+// The map's Video event ("Video,<start ms>,"<file>"", or "1," as old maps write it). lazer draws it in the
+// storyboard's video layer, behind the playfield. Here it is a muted <video> under the canvas, shown from its
+// start time and kept on the song clock. Its sound is left out: lazer's verifier reports video audio as a problem.
+const bgVideo = $("#bgVideo");
+const VIDEO_TYPES = {
+  mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+  avi: "video/x-msvideo", flv: "video/x-flv", wmv: "video/x-ms-wmv", mpg: "video/mpeg", mpeg: "video/mpeg",
+};
+let videoUrl = null;         // blob URL of the video the round uses
+let videoStart = 0;          // when the video starts, in song ms
+let videoBroken = false;     // the browser could not play it
+let videoFile = "";         // the file name of the video, for the notice
+let videoBytes = null;      // the file's bytes, kept so a video the browser refuses can be converted
+let videoExt = "";
+let videoConverted = false; // the video showing is the WebM copy made by transcode.js
+const videoNote = $("#videoNote");
+function videoNotice(msg) {
+  videoNote.textContent = msg;
+}
+let videoSeq = 0;            // so a load that finishes after a newer one has started is dropped
+let veilNow = null;          // the veil last given to the renderer
+
+// The first video event in [Events] whose file has a video extension, as { start, file }, or null.
+function videoEventOf(text) {
+  let inEvents = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) {
+      inEvents = line === "[Events]";
+      continue;
+    }
+    if (!inEvents) continue;
+    const parts = line.split(",");
+    if (parts[0] !== "Video" && parts[0] !== "1") continue;
+    const file = (parts[2] || "").trim().replace(/^"(.*)"$/, "$1");
+    if (!VIDEO_TYPES[file.split(".").pop().toLowerCase()]) continue;
+    const start = parseInt(parts[1], 10);
+    return { start: Number.isFinite(start) ? start : 0, file };
+  }
+  return null;
+}
+
+// Loads the map's video for the round about to start. A map without one, or whose file is not in the
+// archive, shows nothing, as it does in lazer. A video the browser cannot play (FLV, AVI, WMV, MPG) is
+// converted to WebM in the background (transcode.js), so the round starts without waiting for it.
+async function loadVideo(text) {
+  unloadVideo();
+  const seq = videoSeq;
+  const ev = videoEventOf(text);
+  if (!ev) return;
+  const ext = ev.file.split(".").pop().toLowerCase();
+  const entry = zipEntries.get(ev.file.toLowerCase());
+  if (!entry) {
+    videoNotice(`The beatmap names a video, "${ev.file}", that is not in its archive, so it is left out.`);
+    return;
+  }
+  videoStart = ev.start;
+  videoFile = ev.file;
+  const bytes = await entry.read();
+  if (seq !== videoSeq) return;              // another map or round was started meanwhile
+  videoBytes = bytes;
+  videoExt = ext;
+  if (!bgVideo.canPlayType(VIDEO_TYPES[ext])) {
+    convertVideo(seq);
+    return;
+  }
+  showVideo(new Blob([bytes], { type: VIDEO_TYPES[ext] }), false);
+}
+
+// Makes the video from a blob the one the round shows, from its start time.
+function showVideo(blob, converted) {
+  if (videoUrl) URL.revokeObjectURL(videoUrl);
+  videoUrl = URL.createObjectURL(blob);
+  videoConverted = converted;
+  videoBroken = false;
+  bgVideo.src = videoUrl;
+  videoNotice("");
+}
+
+// Converts the video in videoBytes to WebM, reporting progress, and shows it once it is ready. A failure
+// leaves the video out and says why. seq guards against the player having moved on to another map.
+async function convertVideo(seq) {
+  const kind = videoExt.toUpperCase();
+  const report = (text) => {
+    if (seq === videoSeq) videoNotice(`Converting the beatmap's ${kind} video so this browser can play it: ${text}`);
+  };
+  report("starting");
+  try {
+    const blob = await webmFor(videoBytes, videoExt, { onStatus: report, isCurrent: () => seq === videoSeq });
+    if (seq !== videoSeq || !blob) return;
+    showVideo(blob, true);
+  } catch (err) {
+    if (seq !== videoSeq) return;
+    console.error("video conversion failed", err);
+    videoBroken = true;
+    videoNotice(`The beatmap's ${kind} video, "${videoFile}", could not be converted (${err.message}), so it is left out.`);
+  }
+}
+function unloadVideo() {
+  videoSeq++;
+  if (videoUrl) URL.revokeObjectURL(videoUrl);
+  videoUrl = null;
+  videoBroken = false;
+  videoBytes = null;
+  videoExt = "";
+  videoConverted = false;
+  bgVideo.pause();
+  bgVideo.removeAttribute("src");
+  bgVideo.load();
+  bgVideo.hidden = true;
+  setVeil(null);
+  videoNotice("");
+}
+bgVideo.addEventListener("playing", () => videoNotice(""));
+bgVideo.addEventListener("error", () => {
+  if (!videoUrl) return;                     // unloaded on purpose, not a failure
+  if (!videoConverted && videoBytes) {       // the browser refused the file after all: convert it instead
+    const seq = videoSeq;
+    URL.revokeObjectURL(videoUrl);
+    videoUrl = null;
+    bgVideo.hidden = true;
+    bgVideo.removeAttribute("src");
+    bgVideo.load();
+    convertVideo(seq);
+    return;
+  }
+  videoBroken = true;
+  bgVideo.hidden = true;
+  setVeil(null);
+  videoNotice(`The browser could not play the beatmap's video, "${videoFile}", so it is left out.`);
+});
+// The renderer's veil: a black layer over the video, so the notes stay readable. null draws the playfield opaque.
+function setVeil(v) {
+  if (v === veilNow) return;
+  veilNow = v;
+  if (!renderer) return;
+  renderer.setVeil(v);
+  if (lastDraw) {                            // a paused round is not redrawn on its own
+    lastDraw.colours = displayColours();
+    renderer.draw(lastDraw);
+  }
+}
+
+// Called every frame. Shows the video from its start time while a round is on screen, and keeps it on the
+// song clock. The clock is the audio, so pausing (which suspends the audio) holds the video too.
+function syncVideo() {
+  if (!videoUrl || videoBroken) {            // nothing to show (yet): no veil over the playfield
+    setVeil(null);
+    return;
+  }
+  const onRound = playing && (screen === "play" || screen === "result");
+  const into = onRound ? songMs() - videoStart : -1;
+  const show = S.showVideo && into >= 0;
+  setVeil(show ? S.dimVideo : null);
+  if (bgVideo.hidden === show) bgVideo.hidden = !show;
+  if (!show) {
+    if (!bgVideo.paused) bgVideo.pause();
+    return;
+  }
+  const target = into / 1000;
+  if (bgVideo.playbackRate !== playRate) bgVideo.playbackRate = playRate;
+  const runs = !paused && !finished;
+  // Once the round is finished the last picture stays; while it runs or is paused, the picture follows the clock.
+  const reachable = !(bgVideo.duration > 0) || target < bgVideo.duration;
+  if (!finished && reachable && !bgVideo.seeking && Math.abs(bgVideo.currentTime - target) > 0.25) {
+    bgVideo.currentTime = target;
+  }
+  if (runs && bgVideo.paused && !bgVideo.ended) bgVideo.play().catch(() => {});
+  else if (!runs && !bgVideo.paused) bgVideo.pause();
+}
+
+// ---- clock ----
+// Song time in ms for the instant wallPerf (a performance.now() time). With a song playing
+// the audio clock is the source, so pausing (suspending the audio context) freezes it.
+function songMs(wallPerf = performance.now()) {
+  const raw = audioClock()
+    ? clock.songAt(heardAudioTime(wallPerf)) * 1000
+    : (wallPerf - perfStart - pausedTotal) * playRate;
+  return raw - S.offset;      // audio offset setting: the whole round is shifted by this much
+}
+// True while the song plays on the audio clock; a round without a song keeps time on the wall clock.
+// Delivers the presses that are due by song time t, in time order, before the core's update for t.
+const AUTO_STEP = 1000 / 60;
+let autoT = null;           // song time autoplay last played to
+function deliverPresses(t) {
+  queued.sort((a, b) => a.t - b.t);
+  while (queued.length && queued[0].t <= t) {
+    const p = queued.shift();
+    core.press(p.t, p.x, p.y, p.mask);
+  }
+}
+// The hits the hit error bar shows: each circle and slider head judged Great, Ok or Meh, with how early
+// (negative) or late it was hit, kept for the 10 s lazer's lines take to fade.
+function collectHitErrors(recs, t) {
+  if (!errorSeen || errorSeen.length < recs.count) {
+    const grown = new Uint8Array(recs.count);
+    if (errorSeen) grown.set(errorSeen);
+    errorSeen = grown;
+  }
+  const d = recs.data;
+  for (let i = 0; i < recs.count; i++) {
+    if (errorSeen[i] || d[i * 16 + 8] === 0) continue;
+    errorSeen[i] = 1;
+    const kind = d[i * 16];
+    const res = d[i * 16 + 10];
+    if ((kind === KIND.CIRCLE || kind === KIND.HEAD) && (res === RES.GREAT || res === RES.OK || res === RES.MEH)) {
+      hitErrors.push({ offset: d[i * 16 + 9] - d[i * 16 + 4], res, at: t });
+    }
+  }
+  while (hitErrors.length && (t - hitErrors[0].at > 10000 || hitErrors[0].at > t + 1)) hitErrors.shift();
+  return hitErrors;
+}
+function audioClock() {
+  return !!(source && audioCtx);
+}
+
+// The audio time (seconds, on the context's clock) of the sound the listener hears at wallPerf.
+// audioCtx.currentTime is the time being rendered, which reaches the speakers a device latency later
+// (about 30 ms in a typical Chrome setup). Reading it directly ran the clock ahead of the music, so every
+// press was stamped late against what was heard. getOutputTimestamp gives the sample leaving the device
+// at a performance.now() time; without it, or before audio has started, the output latency is taken off.
+function heardAudioTime(wallPerf) {
+  if (audioCtx.state === "running" && audioCtx.getOutputTimestamp) {
+    const ts = audioCtx.getOutputTimestamp();
+    if (ts && ts.performanceTime > 0 && ts.contextTime > 0) {
+      return ts.contextTime + (wallPerf - ts.performanceTime) / 1000;
+    }
+  }
+  const latency = audioCtx.outputLatency || audioCtx.baseLatency || 0;
+  return audioCtx.currentTime + (wallPerf - performance.now()) / 1000 - latency;
+}
+
+// Music and effects go through separate gains, so their volumes can change during a round.
+function ensureGains() {
+  if (!musicGain) {
+    musicGain = audioCtx.createGain();
+    fxGain = audioCtx.createGain();
+    spinMute = audioCtx.createGain();
+    musicGain.connect(audioCtx.destination);
+    fxGain.connect(audioCtx.destination);
+    spinMute.connect(musicGain);
+  }
+  musicGain.gain.value = S.volMusic;
+  fxGain.gain.value = S.volFx;
+}
+
+// Combo colours to draw with, chosen each frame so a skin change applies at once. The core
+// only keeps the colours it loaded with, so the skin's colours are read here instead. A beatmap
+// with its own [Colours] keeps them, as in osu!.
+const DEFAULT_COMBO_COLOURS = [[255, 192, 0], [0, 202, 0], [18, 124, 255], [242, 24, 57]];
+function displayColours() {
+  if (!core) return [];
+  if (beatmapCombos) return core.colours();
+  if (skin && skin.colours.length) return skin.colours;
+  return DEFAULT_COMBO_COLOURS;
+}
+
+// True when a .osu file defines combo colours in its [Colours] section.
+function hasBeatmapCombos(text) {
+  const m = /\[Colours\]([\s\S]*?)(?=\n\s*\[|$)/.exec(text);
+  return !!m && /^\s*Combo\d+\s*:/m.test(m[1]);
+}
+
+// Pointer lock is released whenever the round is not running (pause, result, menu).
+function releasePointerIfIdle() {
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+// ---- view ----
+// The canvas's shape, as w / h. The view follows it, so the playfield covers the whole window.
+function canvasAspect() {
+  const r = glCanvas.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? r.width / r.height : 4 / 3;
+}
+// Recomputes the view from the round's box and the window's shape. Called when a round starts and
+// when the window changes size, so the notes stay on screen at any shape.
+function refreshView() {
+  const [x0, y0, x1, y1] = roundBox || [0, 0, PF_W, PF_H];
+  view = viewFor(x0, y0, x1, y1, canvasAspect());
+}
+addEventListener("resize", () => {
+  refreshView();
+  if (lastDraw && renderer) {
+    lastDraw.view = view;
+    renderer.draw(lastDraw);
+  }
+});
+
+// The box the loaded map's notes need: every circle with its approach ring, every slider with its
+// body and follow circle. Notes outside the playfield widen it, so no note is cut off.
+function roundBoxOf() {
+  let x0 = 0;
+  let y0 = 0;
+  let x1 = PF_W;
+  let y1 = PF_H;
+  const reach = (x, y, pad) => {
+    x0 = Math.min(x0, x - pad);
+    x1 = Math.max(x1, x + pad);
+    y0 = Math.min(y0, y - pad);
+    y1 = Math.max(y1, y + pad);
+  };
+  const d = core.records().data;
+  for (let i = 0; i < core.topCount(); i++) {
+    const r = d.subarray(i * 16, i * 16 + 16);
+    if (r[0] === KIND.CIRCLE) {
+      reach(r[1], r[2], r[3] * OBJECT_PAD);
+    } else if (r[0] === KIND.SLIDER) {
+      const p = core.sliderPoints(i);
+      for (let k = 0; k + 1 < p.length; k += 2) reach(p[k], p[k + 1], r[3] * FOLLOW_PAD);
+    }
+  }
+  return [x0, y0, x1, y1];
+}
+
+// Skipping jumps to two seconds before the first note, as lazer does. It is offered only when that
+// jump is more than a second ahead of the clock.
+const introTarget = (firstTime) => Math.max(0, firstTime - 2000);
+// A map whose first note is within two seconds of the start has no intro worth skipping.
+const canSkipIntro = (t, firstTime) => firstTime > 2000 && introTarget(firstTime) > t + 1000;
+
+// Moves the song to ms (song time). The audio restarts from that point, so it stays in step.
+function seekTo(ms) {
+  const raw = Math.max(0, ms + S.offset);   // songMs() takes the audio offset off again
+  queued = [];
+  autoT = null;
+  cursorTrail.length = 0;
+  if (source && songBuffer) {
+    stopSource();
+    const when = audioCtx.currentTime + 0.05;
+    const at = raw / 1000;
+    source = audioCtx.createBufferSource();
+    source.buffer = songBuffer;
+    source.connect(spinMute);
+    source.playbackRate.value = playRate;
+    source.start(when, at);
+    clock.reset(when - at / playRate, playRate);
+  } else {
+    perfStart = performance.now() - pausedTotal - raw / playRate;
+  }
+}
+function skipIntro() {
+  if (!playing || paused || finished) return false;
+  const first = core.stats().firstTime;
+  if (!canSkipIntro(songMs(), first)) return false;
+  seekTo(introTarget(first));
+  return true;
+}
+
+// ---- playback ----
+async function startPlay() {
+  if (!core || !zipEntries) return;
+  playing = false;                          // stop the loop from updating while the round is set up
+  playRate = rateOf(mods);
+  const d = difficulties[+$("#diff").value];
+  beatmapCombos = S.beatmapColours && hasBeatmapCombos(d.text);
+  core.setSkinColours(skin ? skin.colours : []);
+  core.setMods(failBits(mods));
+  const ok = core.load(mapText(d.text, mods));   // the beatmap with EZ / HR / MR applied
+  if (ok !== true) {
+    statusEl.textContent = ok;
+    statusEl.classList.add("err");
+    return;
+  }
+  roundBox = roundBoxOf();
+  refreshView();
+  lastDraw = null;
+  await loadVideo(d.text);
+  roundSkin = S.beatmapSkins ? await loadBeatmapSkin(archiveBlob) : null;
+  applySkin();
+  audioCtx = audioCtx || new AudioContext();
+  ensureGains();
+  if (audioCtx.state !== "running") await audioCtx.resume();
+  const audioEntry = zipEntries.get(d.meta.audio.toLowerCase());
+  if (audioEntry && !songBuffer) {
+    try {
+      songBuffer = await audioCtx.decodeAudioData(await audioEntry.read());
+    } catch (err) {
+      statusEl.textContent = "Could not decode the song: " + err.message;
+      statusEl.classList.add("err");
+    }
+  }
+  stopSource();
+  core.restart();
+  pressCounts.fill(0);
+  renderer.reset();
+  queued = [];
+  held.clear();
+  releaseMouse();
+  botDone.clear();
+  lastHits = 0;
+  cursorTrail.length = 0;
+  cursorAngle = 0;
+  cursorPrev = { ...cursor };
+  finished = false;
+  paused = false;
+  flashlight = null;
+  showScreen("play");
+  // Lazer starts the clock two seconds before the first note (or at zero if the first note is later), so
+  // a map whose notes start early gets a lead-in. The song begins when the clock reaches its zero point.
+  const introStart = Math.min(0, core.stats().firstTime - 2000);
+  if (songBuffer) {
+    source = audioCtx.createBufferSource();
+    source.buffer = songBuffer;
+    source.connect(spinMute);
+    source.playbackRate.value = playRate;
+    const zero = audioCtx.currentTime + 0.05 - introStart / 1000 / playRate;   // the audio time of song zero, after the lead-in
+    clock.reset(zero, playRate);
+    source.start(zero);
+  }
+  resetSpin();
+  perfStart = performance.now() - introStart / playRate;
+  pausedTotal = 0;
+  resumePrompt = null;
+  roundStartMs = introStart;
+  autoT = null;
+  errorSeen = null;
+  hitErrors = [];
+  playing = true;
+  lockPointer();
+}
+// Locks the pointer to the playfield while a round runs in high precision mode. The browser only
+// allows this after a click or key press that counts as a user gesture (Play, R and Resume do; Escape
+// usually does not), so a refused request just leaves the movement working without the lock.
+function lockPointer() {
+  if (!S.relative) return;
+  requestLock(true);
+}
+// Asks for the lock. Unadjusted movement is asked for first; a browser or platform that refuses it gets the
+// plain lock instead. A refused lock just leaves the movement working over the page.
+function requestLock(unadjusted) {
+  let req;
+  try {
+    req = glCanvas.requestPointerLock(unadjusted ? { unadjustedMovement: true } : undefined);
+  } catch (_) {
+    rawCounts = false;
+    return;
+  }
+  req?.then?.(() => { rawCounts = unadjusted; },
+    () => { rawCounts = false; if (unadjusted) requestLock(false); });
+}
+function stopSource() {
+  if (source) {
+    try { source.stop(); } catch (_) {}
+    source.disconnect();
+    source = null;
+  }
+}
+// Pausing and resuming. The song slows to a stop over PAUSE_RAMP seconds and speeds back up over
+// RESUME_RAMP seconds, and a resume with the pointer on the page first asks for a click on the orange
+// cursor (the resume prompt). The pause menu shows at once; only the music and notes wind down. The
+// 200 ms is the frequency ramp older lazer versions applied in MasterGameplayClockContainer (from memory:
+// the current source no longer has it there, and osu-framework is not in the extracted source).
+const PAUSE_RAMP = 0.2;
+const RESUME_RAMP = 0.2;
+const MUTE_FADE = 0.02;     // the mute's fade, so the sound does not click when it stops or returns
+// Set the pause in motion: the song slows over `seconds` to `target` speed (0 stops it, 1 runs it again).
+// The audio follows the same straight line through the source's playback rate, and the mute takes the
+// sound away once the song has stopped.
+function spinSong(target, seconds) {
+  const c = audioCtx.currentTime;
+  const start = clock.change(c, target, seconds);
+  const rate = source.playbackRate;
+  rate.cancelScheduledValues(c);
+  rate.setValueAtTime(start * playRate, c);
+  rate.linearRampToValueAtTime(target * playRate, c + seconds);
+  const g = spinMute.gain;
+  g.cancelScheduledValues(c);
+  if (target === 0) {
+    silentFrom = c + seconds;
+    g.setValueAtTime(1, c);
+    g.setValueAtTime(1, silentFrom);
+    g.linearRampToValueAtTime(0, silentFrom + MUTE_FADE);
+  } else {
+    const wasSilent = silentFrom !== null && c >= silentFrom;
+    silentFrom = null;
+    g.setValueAtTime(wasSilent ? 0 : 1, c);
+    g.linearRampToValueAtTime(1, c + MUTE_FADE);
+  }
+}
+// A new song source starts at full speed and audible.
+function resetSpin() {
+  if (!spinMute) return;
+  const c = audioCtx.currentTime;
+  spinMute.gain.cancelScheduledValues(c);
+  spinMute.gain.setValueAtTime(1, c);
+  silentFrom = null;
+}
+// The pause itself: the song starts to slow, the pause menu comes up. Nothing is redrawn here; the frame
+// loop keeps the picture moving through the slowdown and holds it after.
+function pauseRound() {
+  paused = true;
+  resumePrompt = null;        // a prompt still fading out from the last resume goes at once
+  held.clear();
+  releaseMouse();
+  if (audioClock()) {
+    spinSong(0, PAUSE_RAMP);
+  } else {
+    pausedAt = performance.now();
+  }
+  $("#pause").hidden = false;
+  syncCursor();
+}
+// Asks to carry on. Lazer shows its prompt first when the pointer is on the page, and carries on at once
+// when it is not, since the prompt could not be seen.
+function requestResume() {
+  if (!playing || finished || !paused || (resumePrompt && resumePrompt.waiting)) return;
+  if (!pointerOver || !pointerAt) {
+    completeResume();
+    return;
+  }
+  resumePrompt = createResume();
+  resumePrompt.show(performance.now(), cursor.x, cursor.y);
+  $("#pause").hidden = true;
+  syncCursor();
+}
+// The round carries on: the song speeds back up, and the pointer is locked again in high precision.
+function completeResume() {
+  if (!playing || finished || !paused) return;
+  paused = false;
+  if (audioClock()) {
+    if (audioCtx.state !== "running") audioCtx.resume();
+    spinSong(1, RESUME_RAMP);
+  } else {
+    pausedTotal += performance.now() - pausedAt;
+  }
+  $("#pause").hidden = true;
+  lockPointer();
+  syncCursor();
+}
+// Escape or Continue. Pausing while a round runs, and resuming it when paused.
+function setPaused(p) {
+  if (!playing || finished) return;
+  if (p) {
+    if (!paused) pauseRound();
+  } else {
+    requestResume();
+  }
+}
+// Ends the resume prompt and goes back to the pause menu, as lazer's Pause does while the prompt is up.
+function cancelPrompt() {
+  if (!resumePrompt) return;
+  resumePrompt = null;
+  if (paused) $("#pause").hidden = false;
+  syncCursor();
+}
+// Where the pointer is, in playfield units, or null when it is off the page.
+function pointerPlayfield() {
+  return pointerOver && pointerAt ? screenToPlayfield(pointerAt.x, pointerAt.y) : null;
+}
+// Hovers the orange cursor when the pointer is on it, then answers a press (or a bound key): the click
+// resumes the round. Returns false when the press is not on the cursor.
+function clickPrompt() {
+  if (!resumePrompt || !resumePrompt.waiting) return false;
+  const now = performance.now();
+  resumeHover(now);
+  if (!resumePrompt.click(now)) return false;
+  completeResume();
+  return true;
+}
+// Updates whether the pointer is on the orange cursor.
+function resumeHover(now) {
+  const origin = resumePrompt.origin();
+  const p = pointerPlayfield();
+  resumePrompt.hover(now, !!p && Math.hypot(p.x - origin.x, p.y - origin.y) <= RESUME_HIT);
+}
+// The prompt's frame for now, with its hover updated; once it has gone, the prompt is cleared.
+function promptLayer(now = performance.now()) {
+  if (!resumePrompt) return null;
+  if (resumePrompt.waiting) resumeHover(now);
+  const layer = resumePrompt.frame(now);
+  if (!layer) resumePrompt = null;
+  return layer;
+}
+// Back to song select, as lazer's pause and result screens do.
+function quitToSelect() {
+  stopSource();
+  unloadVideo();
+  roundSkin = null;
+  lastDraw = null;            // the records it points at belong to the round that just ended
+  playing = false;
+  paused = false;
+  finished = false;
+  resumePrompt = null;
+  if (audioCtx && audioCtx.state !== "running") audioCtx.resume();
+  queued = [];
+  held.clear();
+  releaseMouse();
+  showScreen("select");
+  statusEl.textContent = "Back in song select. Press Play to start again.";
+  statusEl.classList.remove("err");
+}
+$("#play").onclick = startPlay;
+$("#retry").onclick = $("#retryP").onclick = startPlay;
+$("#resume").onclick = () => setPaused(false);
+$("#quit").onclick = $("#quitP").onclick = quitToSelect;
+$("#auto").onchange = () => {
+  queued = [];
+  held.clear();
+};
+
+// ---- mods ----
+// One button per mod on song select. Choosing a mod that conflicts with one on turns that one off (lazer does
+// the same). The choice is kept for the next visit.
+function renderMods() {
+  const box = $("#mods");
+  box.innerHTML = "";
+  for (const m of MODS) {
+    const b = document.createElement("button");
+    b.className = "mod";
+    b.textContent = m.id;
+    b.title = `${m.name}: ${m.desc}`;
+    b.setAttribute("aria-pressed", String(mods.has(m.id)));
+    b.onclick = () => {
+      mods = toggleMod(mods, m.id);
+      storeMods(mods);
+      renderMods();
+    };
+    box.append(b);
+  }
+  const note = $("#modsNote");
+  const rate = rateOf(mods);
+  note.hidden = rate === 1;
+  note.textContent = rate === 1 ? "" : `The song plays at ${rate}x. The browser cannot change speed without pitch, so the pitch changes too.`;
+}
+
+// ---- skins ----
+// The skin files inside the beatmap archive (lazer's beatmap skins). Most maps have none, so this is null.
+async function loadBeatmapSkin(blob) {
+  if (!blob) return null;
+  try {
+    return await loadSkinFile(blob, decodeCtx);
+  } catch (_) {
+    return null;                             // no skin files in it
+  }
+}
+async function refreshSkinList() {
+  skinRecords = await listSkins();
+  renderSkinList();
+}
+function renderSkinList() {
+  $("#skin").replaceChildren(new Option("Default", ""), ...skinRecords.map((r) => new Option(r.name, r.name)));
+  $("#skin").value = skinRecords.some((r) => r.name === S.skin) ? S.skin : "";
+  $("#delSkin").hidden = !$("#skin").value;
+}
+// The skin the round draws with: the beatmap's own files when it has any, else the chosen skin, else the default look.
+function activeSkin() {
+  const base = skin || (S.defaultLook === "argon" ? argonSkin : null);
+  if (!roundSkin) return base;
+  if (!base) return roundSkin;
+  // The beatmap's files override the look: what it provides replaces the base's, the rest stays (as in lazer).
+  return {
+    ...base,
+    ...roundSkin,
+    argon: false,         // a beatmap's own files make it a legacy skin
+    images: new Map([...base.images, ...roundSkin.images]),
+    scales: new Map([...base.scales, ...roundSkin.scales]),
+    blank: new Set([...base.blank, ...roundSkin.blank]),
+    hit: roundSkin.hit || base.hit,
+  };
+}
+// Hands the renderer the skin in use: the imported one, or the default look when none is chosen.
+// A paused or finished round is redrawn at once, since it does not redraw on its own.
+function applySkin() {
+  if (!renderer) return;
+  renderer.setSkin(activeSkin());
+  if (lastDraw) {
+    lastDraw.colours = displayColours();
+    renderer.draw(lastDraw);
+  }
+}
+// Makes name the active skin ("" = default). Loads its colours, sprites and hit sound.
+async function selectSkin(name) {
+  const seq = ++skinSeq;
+  let next = null;
+  const rec = name && skinRecords.find((r) => r.name === name);
+  if (name && !rec) name = "";
+  if (rec) {
+    try {
+      next = await loadSkinFile(rec.blob, decodeCtx);
+    } catch (err) {
+      statusEl.textContent = `Could not load the skin "${name}": ${err.message}`;
+      statusEl.classList.add("err");
+      name = "";
+    }
+  }
+  if (seq !== skinSeq) return;               // a newer choice superseded this one
+  skin = next;
+  S.skin = name;
+  saveSettings();
+  applySkin();
+  renderSkinList();
+}
+$("#skin").onchange = (e) => selectSkin(e.target.value);
+$("#addSkin").onclick = () => $("#sf").click();
+$("#sf").onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  const name = f.name.replace(/\.(osk|zip)$/i, "").trim() || "Skin";
+  try {
+    await loadSkinFile(f, decodeCtx);        // throws on a bad file, so nothing is saved
+    const rec = { name, blob: f };
+    await saveSkin(rec);                     // best effort: the skin still works for this visit
+    skinRecords = skinRecords.filter((r) => r.name !== name).concat(rec);
+    renderSkinList();
+    await selectSkin(name);
+    statusEl.textContent = `Skin "${name}" is active.`;
+    statusEl.classList.remove("err");
+  } catch (err) {
+    statusEl.textContent = "Could not import that skin: " + err.message;
+    statusEl.classList.add("err");
+  }
+};
+$("#delSkin").onclick = async () => {
+  const name = $("#skin").value;
+  if (!name) return;
+  skinRecords = skinRecords.filter((r) => r.name !== name);
+  await deleteSkin(name);
+  renderSkinList();
+  await selectSkin("");
+};
+
+function playHitSound() {
+  const active = activeSkin();
+  if (!active || !active.hit || !audioCtx || !fxGain || !S.hitsounds) return;
+  const s = audioCtx.createBufferSource();
+  const g = audioCtx.createGain();
+  g.gain.value = 0.6;
+  s.buffer = active.hit;
+  s.connect(g).connect(fxGain);
+  s.start();
+}
+
+// ---- autoplay (drives the same API as a player; used by the end-to-end test) ----
+function autoplay(t, recs) {
+  // Find the next top-level object that is not finished (records: top objects come first).
+  const top = core.topCount();
+  let next = -1;
+  for (let i = 0; i < top; i++) {
+    const r = recs.data.subarray(i * 16, i * 16 + 16);
+    const kind = r[0];
+    const open = r[8] === 0;           // not yet judged (state 0)
+    // A slider stays the target until its tail is over, even after the head is hit.
+    const sliderActive = kind === 1 && t <= r[5] + 50;
+    if (open || sliderActive) { next = i; break; }
+  }
+  if (next < 0) return { x: 256, y: 192, mask: 0 };
+  const r = recs.data.subarray(next * 16, next * 16 + 16);
+  const kind = r[0];
+  if (kind === 0) {
+    const x = r[1];
+    const y = r[2];
+    if (t < r[4] - 300) return { x: cursor.x, y: cursor.y, mask: 0 };
+    if (!botDone.has(next) && t >= r[4]) {
+      botDone.add(next);
+      queued.push({ t: r[4], x, y, mask: 1 });
+      return { x, y, mask: 1 };
+    }
+    return { x, y, mask: 0 };
+  }
+  if (kind === 1) {
+    if (t < r[4] - 300) return { x: r[1], y: r[2], mask: 0 };
+    if (!botDone.has(next) && t >= r[4]) {
+      botDone.add(next);
+      queued.push({ t: r[4], x: r[1], y: r[2], mask: 1 });
+    }
+    if (t >= r[4] && t <= r[5] + 40) return { x: r[12], y: r[13], mask: 1 };
+    return { x: r[1], y: r[2], mask: 0 };
+  }
+  // spinner: circle the centre at 5 turns per second while the key is held
+  const cx = 256;
+  const cy = 192;
+  if (t < r[4] - 300) return { x: cx, y: cy - 100, mask: 0 };
+  if (t >= r[4] && t <= r[5]) {
+    const th = (2 * Math.PI * 5 * (t - r[4])) / 1000;
+    return { x: cx + 100 * Math.sin(th), y: cy - 100 * Math.cos(th), mask: 1 };
+  }
+  return { x: cx, y: cy - 100, mask: 0 };
+}
+
+// ---- result ----
+function showResult(st) {
+  const rank = rankFor(st.accuracy, st.failed);
+  const grade = $("#grade");
+  grade.textContent = rank;
+  grade.style.color = RANK_COLOURS[rank];
+  $("#resultText").innerHTML = `<div class="verdict">${st.failed ? "Failed" : "Finished"}</div>
+    <div class="stats">
+      <div class="stat"><b>${Math.round(st.score).toLocaleString()}</b><span>Score</span></div>
+      <div class="stat"><b>${(st.accuracy * 100).toFixed(2)}%</b><span>Accuracy</span></div>
+      <div class="stat"><b>${st.maxCombo}x</b><span>Max combo</span></div>
+      <div class="stat"><b>${st.great}</b><span>${LABEL[RES.GREAT]}</span></div>
+      <div class="stat"><b>${st.ok}</b><span>${LABEL[RES.OK]}</span></div>
+      <div class="stat"><b>${st.meh}</b><span>${LABEL[RES.MEH]}</span></div>
+      <div class="stat"><b>${st.miss}</b><span>${LABEL[RES.MISS]}</span></div>
+    </div>`;
+  showScreen("result");
+}
+
+// ---- frame loop: runs all the time; does work only during a round that is not paused ----
+// The game draws its own cursor during a round; the system pointer shows on pause and results.
+function syncCursor() {
+  const live = playing && !paused && !finished;
+  // The resume prompt draws its own cursors, so the system pointer stays hidden while it is up.
+  const prompt = playing && !finished && !!resumePrompt;
+  stageEl.classList.toggle("hide-cursor", live || prompt);
+  if (!live && !prompt) releasePointerIfIdle();
+}
+// A paused round's picture holds, except while the song is still slowing down (the frames follow it
+// down to a stop) and while the resume prompt is up (its cursors and message move).
+// The prompt draws both of its cursors above the HUD (lazer's resume overlay is above it), so the game's
+// own cursor is left out of the playfield while it is up.
+function drawHeld() {
+  const layer = promptLayer(performance.now());
+  renderer.draw({
+    ...lastDraw,
+    cursor: null,
+    resume: layer && { ...layer, pointer: pointerPlayfield(), size: S.cursorSize },
+  });
+}
+function frame() {
+  requestAnimationFrame(frame);
+  syncCursor();
+  syncVideo();
+  if (!playing) return;
+  if (paused && !(audioClock() && clock.rampingAt(audioCtx.currentTime))) {
+    if (resumePrompt && lastDraw) drawHeld();
+    return;
+  }
+  const t = songMs();
+  if (!S.relative && !paused && pointerAt) cursor = screenToPlayfield(pointerAt.x, pointerAt.y);
+  let x = cursor.x;
+  let y = cursor.y;
+  let mask = currentMask();
+
+  if ($("#auto").checked) {
+    // Lazer plays autoplay back at a fixed rate (its FrameStabilityContainer), so how fast the page draws does
+    // not change the result: the steps since the last frame are played first, AUTO_STEP ms apart.
+    if (autoT !== null && t > autoT && t - autoT < 1000) {
+      for (let ts = autoT + AUTO_STEP; ts < t; ts += AUTO_STEP) {
+        const s = autoplay(ts, core.records());
+        deliverPresses(ts);
+        core.update(ts, s.x, s.y, s.mask);
+      }
+    }
+    autoT = t;
+    const a = autoplay(t, core.records());
+    x = a.x;
+    y = a.y;
+    mask = a.mask;
+    cursor = { x, y };
+  }
+
+  deliverPresses(t);
+  core.update(t, x, y, mask);
+
+  const recs = core.records();
+  const st = core.stats();
+  // The flashlight reaches the cursor FOLLOW_DELAY_MS after it moves: each frame it closes part of the gap,
+  // with the same quadratic ease-out lazer uses for its mouse-move steps.
+  if (mods.has("FL")) {
+    if (!flashlight) flashlight = { x, y, t };
+    const k = Math.min(Math.max(0, t - flashlight.t), FOLLOW_DELAY_MS) / FOLLOW_DELAY_MS;
+    const ease = 1 - (1 - k) * (1 - k);
+    flashlight.x += (x - flashlight.x) * ease;
+    flashlight.y += (y - flashlight.y) * ease;
+    flashlight.t = t;
+  }
+  const hits = st.great + st.ok + st.meh;
+  if (hits > lastHits) {
+    lastHits = hits;
+    playHitSound();
+  }
+  // Cursor rotation turns with the distance moved; the trail keeps the last 150 ms of positions.
+  cursorAngle += S.cursorRotate ? Math.hypot(x - cursorPrev.x, y - cursorPrev.y) * 0.08 : 0;
+  cursorPrev = { x, y };
+  cursorTrail.push({ x, y, t });
+  while (cursorTrail.length && t - cursorTrail[0].t > 150) cursorTrail.shift();
+
+  lastDraw = {
+    t,
+    hitLighting: S.hitLighting,
+    hidden: mods.has("HD"),
+    flashlight: flashlight ? { x: flashlight.x, y: flashlight.y, r: flashlightRadius(st.combo) } : null,
+    modsText: modsLabel(mods),
+    hitFade: S.hitFade,
+    data: recs.data,
+    count: recs.count,
+    top: core.topCount(),
+    colours: displayColours(),
+    preempt: st.preempt,
+    fadeIn: st.fadeIn,
+    radius: st.radius,
+    sliderPoints: (i) => core.sliderPoints(i),
+    cursor: {
+      x,
+      y,
+      size: S.cursorSize,
+      angle: cursorAngle,
+      trail: S.cursorTrail ? cursorTrail : [],
+    },
+    snaking: { in: S.snakeIn, out: S.snakeOut },
+    dim: S.healthFade && st.health < 0.3 ? Math.min(0.6, (0.3 - st.health) * 2) : 0,
+    // name is lazer's trigger name (K1, K2, M1) for the legacy counter; label is the key's own name.
+    keys: S.keyOverlay
+      ? [
+        ...S.keys.map((k, i) => ({ label: k.label, name: `K${i + 1}`, count: pressCounts[i], down: (mask & (1 << i)) !== 0 })),
+        { label: "M1", name: "M1", count: pressCounts[2], down: (mask & 4) !== 0, enabled: S.mouse },
+        { label: "M2", name: "M2", count: pressCounts[3], down: (mask & 8) !== 0, enabled: S.mouse },
+      ]
+      : null,
+    view,
+    skipHint: canSkipIntro(t, st.firstTime) ? `Press ${S.skip.label} to skip intro` : null,
+    hud: {
+      score: st.score, accuracy: st.accuracy, combo: st.combo, health: st.health,
+      progress: { start: roundStartMs, first: st.firstTime, last: st.endTime },
+      errors: { list: collectHitErrors(recs, t), windows: [st.windowGreat, st.windowOk, st.windowMeh] },
+    },
+    resume: (() => { const l = promptLayer(); return l && { ...l, size: S.cursorSize }; })(),
+  };
+  renderer.draw(lastDraw);
+
+  if ((st.failed || st.finished) && !finished) {
+    finished = true;
+    syncCursor();
+    showResult(st);
+  }
+  if (!finished) statusEl.textContent = `t=${Math.max(0, t).toFixed(0)} ms · ${st.judgements | 0}/${core.topCount()} judged · ${(st.accuracy * 100).toFixed(2)}%`;
+}
+requestAnimationFrame(frame);
+
+// Expose minimal hooks for the end-to-end test.
+window.osuDemo = {
+  get ready() { return !!core && !!renderer; },
+  stats: () => core && core.stats(),
+  records: () => core && core.records().data.slice(),
+  recordCount: () => core && core.records().count,
+  topCount: () => core && core.topCount(),
+  get playing() { return playing; },
+  get paused() { return paused; },
+  // The resume prompt's orange cursor (playfield units) while it waits for a click, or null.
+  get resumePrompt() { return resumePrompt && resumePrompt.waiting ? resumePrompt.origin() : null; },
+  get screen() { return screen; },
+  get difficultyCount() { return difficulties.length; },
+  get settings() { return { keys: S.keys.map((k) => ({ ...k })), mouse: S.mouse, skin: S.skin }; },
+  get hasHitsound() { return !!(activeSkin() && activeSkin().hit); },
+  // Which look the round draws with: the beatmap's own files, your chosen skin, the Argon default, or flat.
+  get lookSource() {
+    if (roundSkin) return "beatmap";
+    if (skin) return "chosen";
+    return S.defaultLook === "argon" && argonSkin ? "argon" : "flat";
+  },
+  get video() {
+    return { loaded: !!videoUrl, broken: videoBroken, shown: !bgVideo.hidden, paused: bgVideo.paused,
+      time: bgVideo.currentTime, start: videoStart, veil: veilNow, muted: bgVideo.muted, note: videoNote.textContent,
+      converted: videoConverted };
+  },
+  get skinSprites() { return renderer ? renderer.spriteNames() : []; },
+  get drawn() { return !!lastDraw; },
+  // How far the song clock sits behind the audio being rendered now (ms), or null without a song playing.
+  get audioLagMs() { return source && audioCtx ? (audioCtx.currentTime - heardAudioTime(performance.now())) * 1000 : null; },
+  // Draws the round's last frame again, at song time ms, and returns both canvases as PNGs (for the tests). The
+  // clock does not move, so a check does not depend on how fast the page draws. Both reads happen in this call,
+  // before the browser clears the WebGL buffer.
+  drawAt(ms) {
+    if (!lastDraw || !renderer) return null;
+    renderer.draw({ ...lastDraw, t: ms });
+    return { playfield: glCanvas.toDataURL("image/png"), overlay: $("#hud").toDataURL("image/png") };
+  },
+  get mods() { return modsLabel(mods); },
+  get rate() { return playRate; },
+  get hidden() { return !!(lastDraw && lastDraw.hidden); },
+  get flashlight() { return lastDraw && lastDraw.flashlight ? { ...lastDraw.flashlight } : null; },
+  get savedMaps() { return savedMaps.map((r) => r.name); },
+  displayColours: () => displayColours(),
+  cursor: () => ({ ...cursor, relative: S.relative, locked: document.pointerLockElement === glCanvas }),
+  view: () => ({ ...view }),
+  canvasRect: () => { const r = glCanvas.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; },
+  get skipAvailable() {
+    return !!core && playing && !paused && !finished && canSkipIntro(songMs(), core.stats().firstTime);
+  },
+  get skipKey() { return S.skip.label; },
+  sliderPointCount: (i) => (core ? core.sliderPoints(i).length : -1),
+  sliderPoints: (i) => (core ? Array.from(core.sliderPoints(i)) : []),
+};
+
+// ---- start-up: the saved skin and beatmap list ----
+renderMods();                                              // the mod buttons, before the first await so they exist once the page is ready
+argonSkin = await buildArgonSkin().catch(() => null);   // the default look needs OffscreenCanvas; without it, flat
+applySkin();
+await refreshSkinList();
+await refreshMapList();
+showScreen("menu");
+refreshView();
+if (S.skin) await selectSkin(S.skin);
+</script>
+</body>
+</html>
