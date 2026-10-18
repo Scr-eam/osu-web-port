@@ -210,28 +210,150 @@
   body.calm #home .logo-spot { transition: none; }
   .primary { background: #6644cc; border-color: #6644cc; font-weight: 700; }
 
-  /* Song select: maps on the left, the chosen map's difficulty and options on the right. */
-  #select { align-items: stretch; justify-content: flex-start; padding: 0; text-align: left; gap: 0; overflow: auto; }
-  .select-head { padding: 16px 20px; border-bottom: 1px solid #222; background: #0c0c14; }
-  .select-head h2 { font-size: 18px; }
-  .select-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 16px; padding: 16px 20px; }
-  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
-  .col-actions { display: flex; gap: 8px; }
-  #lib { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-  #lib button.item { text-align: left; background: #151523; border: 1px solid #262636; word-break: break-word; }
-  #lib button.item[aria-pressed="true"] { border-color: #6644cc; background: #241c44; }
-  #lib button.item { display: flex; align-items: center; gap: 10px; }
-  #lib button.item span { min-width: 0; }
-  #lib .cover { width: 96px; height: 54px; object-fit: cover; border-radius: 4px; flex: none; background: #0b0b14; }
-  #drop { border: 1px dashed #334; border-radius: 12px; padding: 22px; color: #aab; }
-  #drop.over { background: rgba(60, 80, 160, .25); border-color: #7af; }
+  /* Song select, in the main menu's style: the chosen map's background behind everything, its details on the left
+     (difficulties, length, BPM, difficulty bars, an object-density graph that follows the music preview), the saved
+     maps as a carousel of cover cards on the right. Accent colours follow the skin like the menu's. */
+  body { --accent-a: var(--pink); --accent-b: var(--orange); }
+  #select { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; gap: 0; text-align: left; overflow: hidden;
+    background: radial-gradient(ellipse at 30% 30%, rgba(40, 28, 80, .5), #07060f 75%); }
+  #select .sel-bg { position: absolute; inset: -30px; z-index: 0; pointer-events: none; }
+  #select .sel-bg i { position: absolute; inset: 0; background: center / cover no-repeat; filter: blur(8px) saturate(1.1); opacity: 0; transition: opacity .6s ease; }
+  #select .sel-bg i.on { opacity: 1; }
+  #select .sel-shade { position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: linear-gradient(90deg, rgba(8, 6, 18, .88) 0%, rgba(8, 6, 18, .62) 48%, rgba(8, 6, 18, .78) 100%), linear-gradient(0deg, rgba(8, 6, 18, .7), transparent 30%); }
+  #select > header, #select > .sel-main, #select > footer { position: relative; z-index: 1; }
+  .sel-top { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid rgba(255, 255, 255, .07);
+    background: linear-gradient(180deg, rgba(10, 8, 22, .85), rgba(10, 8, 22, .55)); backdrop-filter: blur(8px); }
+  .sel-back { display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px 8px 8px; font-weight: 600; }
+  .sel-back svg { width: 20px; height: 20px; }
+  .sel-heading { display: flex; flex-direction: column; min-width: 0; }
+  .sel-kicker { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-a); filter: brightness(1.3); }
+  .sel-heading h2 { margin: 0; font: 600 19px/1.2 "Fredoka", "Inter", system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sel-actions { margin-left: auto; display: flex; gap: 8px; }
+  .sel-actions button, .sel-search button { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .12); }
+  .sel-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(340px, 46%) 1fr; gap: 22px; padding: 20px 0 0 22px; }
+  .sel-left { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; padding-bottom: 20px; }
+  .sel-card { border-radius: 18px; padding: 22px 24px; background: rgba(14, 10, 28, .72); border: 1px solid rgba(255, 255, 255, .09);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .35); backdrop-filter: blur(10px); position: relative; overflow: hidden; }
+  .sel-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(var(--accent-a), var(--accent-b)); }
+  #drop { color: #c9c3e0; line-height: 1.55; font-size: 15px; border: 1.5px dashed rgba(255, 255, 255, .16); border-radius: 12px; padding: 22px; }
+  #drop.over { background: color-mix(in srgb, var(--accent-a), transparent 82%); border-color: var(--accent-a); }
+  .sel-title { font: 600 clamp(24px, 2.6vw, 34px)/1.15 "Fredoka", "Inter", system-ui, sans-serif; color: #fff; text-shadow: 0 2px 14px rgba(0, 0, 0, .5); word-break: break-word; }
+  .sel-artist { font-size: 17px; color: #e4ddff; margin-top: 4px; }
+  .sel-mapper { font-size: 13px; color: #a79fc6; margin-top: 4px; }
+  .sel-mapper b { color: #e4ddff; font-weight: 600; }
+  .sel-diffname { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 6px 12px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
+    background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .12); max-width: 100%; }
+  .sel-diffname i { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--dc); box-shadow: 0 0 8px var(--dc); }
+  .sel-diffname span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sel-diffs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .sel-diffs button { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
+    background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12); max-width: 100%; }
+  .sel-diffs button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sel-diffs button i { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--dc); box-shadow: 0 0 8px var(--dc); }
+  .sel-diffs button[aria-checked="true"] { background: color-mix(in srgb, var(--accent-a), transparent 72%); border-color: var(--accent-a); color: #fff; }
+  .sel-stats { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; }
+  .sel-stats div { display: flex; flex-direction: column; }
+  .sel-stats b { font-size: 18px; font-variant-numeric: tabular-nums; color: #fff; }
+  .sel-stats span { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #9f97bf; }
+  .sel-stats .changed b { color: var(--accent-b); }
+  .sel-bars { display: grid; grid-template-columns: auto 1fr auto; gap: 7px 12px; align-items: center; margin-top: 16px; font-size: 12.5px; }
+  .sel-bars span { color: #b9b1d8; font-weight: 600; letter-spacing: .04em; }
+  .sel-bars em { font-style: normal; font-variant-numeric: tabular-nums; color: #fff; min-width: 2.4em; text-align: right; }
+  .sel-bars em.up { color: #ff8a8a; }
+  .sel-bars em.down { color: #8fd8ff; }
+  .sel-bars i { display: block; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+  .sel-bars i::after { content: ""; display: block; height: 100%; width: var(--v); border-radius: 3px; background: linear-gradient(90deg, var(--accent-a), var(--accent-b)); transition: width .35s ease; }
+  .sel-graph { margin-top: 16px; height: 62px; }
+  .sel-graph canvas { width: 100%; height: 100%; display: block; }
+  .sel-opts { display: flex; flex-direction: column; gap: 10px; padding: 0 4px; }
+  .sel-diffsel { display: none; }
+  .mods { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mod { padding: 6px 10px; font-size: 13px; font-weight: 700; background: rgba(14, 10, 28, .7); border-color: rgba(255, 255, 255, .12); }
+  .mod[aria-pressed="true"] { border-color: var(--accent-a); background: color-mix(in srgb, var(--accent-a), transparent 40%); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); box-shadow: 0 0 14px color-mix(in srgb, var(--accent-a), transparent 60%); }
+  .mods-note { font-size: 13px; }
+  .sel-playrow { display: flex; align-items: center; gap: 16px; margin-top: 4px; }
   .check { display: flex; align-items: center; gap: 8px; }
-  .mods { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-  .mod { padding: 5px 9px; font-size: 13px; font-weight: 700; }
-  .mod[aria-pressed="true"] { border-color: #b9f; background: #3b2f6e; color: #fff; }
-  .mods-note { margin-top: 8px; font-size: 13px; }
-  .select-foot { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-top: 1px solid #222; background: #0c0c14; }
-  .select-foot .muted { margin-left: auto; }
+  .sel-play { margin-left: auto; min-width: 180px; padding: 13px 28px; border-radius: 999px; font: 700 18px/1 "Fredoka", "Inter", system-ui, sans-serif; letter-spacing: .02em;
+    background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); border: none; color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .35); box-shadow: 0 8px 26px color-mix(in srgb, var(--accent-a), transparent 55%); transition: transform .15s, box-shadow .15s, filter .15s; }
+  .sel-play:hover:not(:disabled) { transform: translateY(-1px) scale(1.03); filter: brightness(1.08); background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); }
+  .sel-play:disabled { background: rgba(255, 255, 255, .08); box-shadow: none; }
+  .sel-right { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+  .sel-filters { display: flex; flex-direction: column; gap: 8px; margin-right: 22px; padding: 10px; border-radius: 16px;
+    background: rgba(10, 8, 22, .72); border: 1px solid rgba(255, 255, 255, .08); backdrop-filter: blur(10px); }
+  .sel-search { display: flex; align-items: center; gap: 10px; position: relative; }
+  .sel-count { position: absolute; right: 16px; font-size: 12px; font-weight: 600; color: var(--accent-b); pointer-events: none; }
+  .sel-sortbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .sel-sortbar .pill { display: flex; align-items: center; border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); }
+  .sel-sortbar .pill span { padding: 7px 10px; font-size: 13px; font-weight: 700; background: rgba(255, 255, 255, .07); color: #e4ddff; }
+  .sel-sortbar .pill select { border: none; background: transparent; color: #fff; padding: 7px 8px; font-size: 13px; cursor: pointer; }
+  .sel-sortbar .pill select option { background: #1a1530; }
+  .sel-sortbar .pill-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; font-weight: 600; border-radius: 10px;
+    background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .1); }
+  .sel-sortbar .pill-btn svg { width: 16px; height: 16px; }
+  .sel-sortbar #delMap { margin-left: auto; }
+  .sel-search input { flex: 1; min-width: 0; padding: 9px 90px 9px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(10, 8, 22, .7); color: #fff; font-size: 14px; }
+  .sel-search input:focus { outline: none; border-color: var(--accent-a); }
+  #lib { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 6px 22px 40vh 26px; scroll-padding: 30vh 0; }
+  #lib button.item { position: relative; flex: none; display: flex; align-items: center; gap: 14px; height: 74px; padding: 0 16px 0 0; text-align: left; overflow: hidden;
+    border-radius: 14px; border: 1px solid rgba(255, 255, 255, .09); background: rgba(16, 12, 32, .82); transition: transform .25s cubic-bezier(.3, .9, .3, 1), border-color .2s, box-shadow .2s, height .25s; }
+  #lib button.item:hover { transform: translateX(-8px); border-color: rgba(255, 255, 255, .22); background: rgba(22, 16, 42, .9); }
+  #lib button.item[aria-pressed="true"] { transform: translateX(-22px); height: 92px; border-color: var(--accent-a);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .45), 0 0 0 1px var(--accent-a), 0 0 26px color-mix(in srgb, var(--accent-a), transparent 60%); }
+  #lib .cover { width: 130px; height: 100%; object-fit: cover; flex: none; -webkit-mask-image: linear-gradient(90deg, #000 60%, transparent); mask-image: linear-gradient(90deg, #000 60%, transparent); }
+  #lib .nocover { width: 130px; height: 100%; flex: none; background: linear-gradient(135deg, color-mix(in srgb, var(--accent-a), transparent 70%), transparent); }
+  #lib .txt { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+  #lib .txt b { font: 600 16px/1.2 "Fredoka", "Inter", system-ui, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lib .txt span { font-size: 13px; color: #b9b1d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lib button.item[aria-pressed="true"] .txt b { font-size: 18px; }
+  #libEmpty { padding: 0 22px; }
+  /* group headers */
+  #lib .grp { flex: none; margin: 10px 0 2px 6px; font: 600 14px "Fredoka", "Inter", system-ui, sans-serif; letter-spacing: .06em; color: var(--accent-b); filter: brightness(1.2);
+    display: flex; align-items: center; gap: 10px; }
+  #lib .grp::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, .2), transparent); }
+  /* the difficulty dots on a map card (known once the map has been opened) */
+  #lib .dots { display: flex; gap: 4px; margin-top: 3px; }
+  #lib .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--dc); box-shadow: 0 0 5px var(--dc); }
+  /* the open map's difficulties, dropped down under its card, lazer style */
+  #lib .diffgroup { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 2px 0 8px 54px; animation: diffs-in .3s cubic-bezier(.3, .9, .3, 1); }
+  @keyframes diffs-in { from { opacity: 0; transform: translateY(-10px); } }
+  #lib .diff { position: relative; display: flex; align-items: center; gap: 12px; height: 54px; padding: 0 16px 0 20px; text-align: left; border-radius: 12px; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .08); background: linear-gradient(90deg, color-mix(in srgb, var(--dc), transparent 82%), rgba(16, 12, 32, .85) 45%);
+    transition: transform .22s cubic-bezier(.3, .9, .3, 1), border-color .2s, box-shadow .2s; animation: diffs-in .3s cubic-bezier(.3, .9, .3, 1) both; animation-delay: calc(var(--n) * 40ms); }
+  #lib .diff::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--dc); box-shadow: 0 0 12px var(--dc); }
+  #lib .diff:hover { transform: translateX(-6px); border-color: rgba(255, 255, 255, .22); }
+  #lib .diff[aria-checked="true"] { transform: translateX(-18px); border-color: var(--dc); box-shadow: 0 0 0 1px var(--dc), 0 6px 22px rgba(0, 0, 0, .4), 0 0 20px color-mix(in srgb, var(--dc), transparent 65%); }
+  #lib .diff .dn { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+  #lib .diff b { font-size: 14.5px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lib .diff b small { font-weight: 500; color: #b9b1d8; font-size: 12px; margin-left: 6px; }
+  #lib .diff .dstat { display: flex; gap: 6px; font-size: 11.5px; color: #cfc8e8; }
+  #lib .diff .dstat span { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, .08); font-variant-numeric: tabular-nums; }
+  #lib .diff .dstat span:first-child { background: var(--dc); color: #111; font-weight: 700; }
+  /* going into song select: a wipe in the skin's colours, then the panels slide in */
+  #wipe { position: fixed; z-index: 2600; left: 0; top: 0; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-a), #fff 15%) 0%, var(--accent-a) 45%, color-mix(in srgb, var(--accent-a), var(--accent-b) 60%) 75%, #0b0818 100%); }
+  #select.entering .sel-top { animation: sel-in-top .55s cubic-bezier(.2, .8, .2, 1) both; }
+  #select.entering .sel-left > * { animation: sel-in-left .6s cubic-bezier(.2, .8, .2, 1) both; }
+  #select.entering .sel-left > :nth-child(2) { animation-delay: .08s; }
+  #select.entering .sel-filters { animation: sel-in-right .6s cubic-bezier(.2, .8, .2, 1) both; }
+  #select.entering #lib > * { animation: sel-in-right .6s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(min(var(--i, 0), 10) * 35ms + 80ms); }
+  #select.entering .sel-foot { animation: sel-in-bottom .5s ease both .15s; }
+  @keyframes sel-in-top { from { transform: translateY(-100%); opacity: 0; } }
+  @keyframes sel-in-left { from { transform: translateX(-60px); opacity: 0; } }
+  @keyframes sel-in-right { from { transform: translateX(80px); opacity: 0; } }
+  @keyframes sel-in-bottom { from { transform: translateY(100%); opacity: 0; } }
+  body.calm #select.entering * { animation: none !important; }
+  .sel-foot { display: flex; justify-content: space-between; gap: 12px; padding: 10px 22px; font-size: 12.5px; border-top: 1px solid rgba(255, 255, 255, .06); background: rgba(8, 6, 18, .6); }
+  @media (max-width: 820px) {
+    .sel-main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; padding: 12px 0 0 12px; overflow-y: auto; }
+    .sel-left { overflow: visible; padding-right: 12px; }
+    .sel-actions { display: none; }
+    #lib { padding-bottom: 20px; }
+    .sel-foot span:last-child { display: none; }
+  }
+  body.calm #lib button.item, body.calm #select .sel-bg i { transition: none; }
+  body[data-screen="select"] #status { top: auto; bottom: 40px; right: 22px; }
 
   /* Results: the grade in the colour the game gives it, then the numbers. */
   .grade { font-size: clamp(90px, 22vw, 180px); font-weight: 800; line-height: 1; text-shadow: 0 6px 40px rgba(0, 0, 0, .6); }
@@ -357,33 +479,63 @@
   </section>
 
   <section id="select" class="screen" aria-label="Song select" hidden>
-    <div class="select-head"><h2 id="info">Select a beatmap</h2></div>
-    <div class="select-body">
-      <div class="col">
-        <div class="col-actions">
-          <button id="open">Open .osz</button>
-          <button id="impOpen">Import from osu!</button>
-          <button id="delMap" hidden>Forget</button>
+    <div class="sel-bg" id="selBg" aria-hidden="true"></div>
+    <div class="sel-shade" aria-hidden="true"></div>
+    <header class="sel-top">
+      <button id="backSelect" class="sel-back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Back</button>
+      <div class="sel-heading"><span class="sel-kicker">Solo</span><h2 id="info">Select a beatmap</h2></div>
+      <div class="sel-actions">
+        <button id="open">Open .osz</button>
+        <button id="impOpen">Import from osu!</button>
+        <button id="selectSettings">Settings</button>
+      </div>
+    </header>
+    <div class="sel-main">
+      <div class="sel-left">
+        <div class="sel-card">
+          <div id="drop"><b>Pick a map on the right</b>, or drop <b>.osz</b> files anywhere on the page.<div class="muted" style="margin-top:6px">You can also use <b>Open .osz</b> or <b>Import from osu!</b> up top.</div></div>
+          <div class="sel-meta" id="selMeta" hidden>
+            <div class="sel-title" id="selTitle"></div>
+            <div class="sel-artist" id="selArtist"></div>
+            <div class="sel-mapper" id="selMapper"></div>
+            <div class="sel-diffname" id="selDiffName"></div>
+            <div class="sel-stats" id="selStats"></div>
+            <div class="sel-bars" id="selBars"></div>
+            <div class="sel-graph"><canvas id="selGraph" aria-hidden="true"></canvas></div>
+          </div>
+        </div>
+        <div class="sel-opts">
+          <label class="sel-diffsel">Difficulty <select id="diff" aria-label="Difficulty" disabled></select></label>
+          <div class="mods" id="mods" role="group" aria-label="Mods"></div>
+          <div class="muted mods-note" id="modsNote" hidden></div>
+          <div class="sel-playrow">
+            <input type="checkbox" id="auto" hidden>
+            <button id="play" class="primary sel-play" disabled>Play</button>
+          </div>
+        </div>
+      </div>
+      <div class="sel-right">
+        <div class="sel-filters">
+          <div class="sel-search">
+            <input type="search" id="selSearch" placeholder="Search your maps" aria-label="Search your maps">
+            <span class="sel-count" id="selCount"></span>
+          </div>
+          <div class="sel-sortbar">
+            <label class="pill"><span>Sort</span><select id="selSort" aria-label="Sort by">
+              <option value="title">Title</option><option value="artist">Artist</option><option value="recent">Recently played</option><option value="plays">Most played</option><option value="added">Date added</option>
+            </select></label>
+            <label class="pill"><span>Group</span><select id="selGroup" aria-label="Group by">
+              <option value="none">None</option><option value="title">Title (A–Z)</option><option value="artist">Artist (A–Z)</option><option value="played">Played / not played</option>
+            </select></label>
+            <button class="pill-btn" id="selRandom" title="Pick a random map (F2)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.5c2 0 3.2 1 4.5 3l1 1.6c1.3 2 2.5 3.4 4.5 3.4H20M17 12l3 3-3 3M4 17h3.5c1.2 0 2-.4 2.8-1.2M14 7.8c.8-.5 1.6-.8 2.5-.8H20M17 4l3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Random</button>
+            <button id="delMap" class="pill-btn" hidden title="Remove the selected map from this browser">Forget</button>
+          </div>
         </div>
         <div id="lib" aria-label="Saved beatmaps"></div>
-        <div id="libEmpty" class="muted">No saved beatmaps yet. Open a .osz file, or drop one anywhere on the page.</div>
-      </div>
-      <div class="col">
-        <div id="drop">Drop a <b>.osz</b> beatmap here, or use <b>Open .osz</b>.
-          <div class="muted" style="margin-top:8px">Keys: <span id="dropKeys"></span></div>
-        </div>
-        <label>Difficulty <select id="diff" aria-label="Difficulty" disabled></select></label>
-        <label class="check"><input type="checkbox" id="auto"> Autoplay</label>
-        <div class="mods" id="mods" role="group" aria-label="Mods"></div>
-        <div class="muted mods-note" id="modsNote" hidden></div>
+        <div id="libEmpty" class="muted">No saved beatmaps yet. Open a .osz file, drop one anywhere on the page, or import from osu!.</div>
       </div>
     </div>
-    <div class="select-foot">
-      <button id="backSelect">Back</button>
-      <button id="selectSettings">Settings</button>
-      <button id="play" class="primary" disabled>Play</button>
-      <span class="muted">Enter plays · Esc goes back</span>
-    </div>
+    <footer class="sel-foot"><span class="muted">Keys: <span id="dropKeys"></span></span><span class="muted">↑ ↓ maps · ← → difficulty · Enter plays · Esc goes back</span></footer>
   </section>
 
   <section id="result" class="screen" aria-label="Results" hidden>
@@ -744,6 +896,8 @@ addEventListener("keydown", (e) => {
   }
   const idx = S.keys.findIndex((k) => k.code === e.code);
   if (idx < 0) return;
+  // typing in a text box (song search, import search) outside a round: the play keys are just letters there
+  if (!playing && e.target.closest?.("input:not([type=checkbox]):not([type=range]), textarea, [contenteditable]")) return;
   e.preventDefault();
   if (e.repeat || !playing || paused || finished || $("#auto").checked || held.has(e.code)) return;
   held.add(e.code);
@@ -931,6 +1085,7 @@ async function openOsz(blob, name = blob.name, remember = true) {
     openedName = name;
     renderMapList();
     showScreen("select");
+    dispatchEvent(new Event("map-opened"));   // song select's details, background and music preview
     $("#info").textContent = `${first.artist} – ${first.title}`;
     statusEl.textContent = `${first.artist} – ${first.title}${note}`;
     statusEl.classList.remove("err");
@@ -1031,16 +1186,30 @@ function renderMapList() {
       img.className = "cover";
       img.src = url;
       img.alt = "";
+      img.loading = "lazy";
       b.append(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "nocover";
+      b.append(ph);
     }
-    const label = document.createElement("span");
-    label.textContent = r.name.replace(/\.(osz|zip)$/i, "");
-    b.append(label);
+    // "123456 Artist - Title" (the .osz name): the title big, the artist under it
+    const base = r.name.replace(/\.(osz|zip)$/i, "").replace(/^\d+\s+/, "");
+    const cut = base.indexOf(" - ");
+    const txt = document.createElement("span");
+    txt.className = "txt";
+    const t = document.createElement("b");
+    t.textContent = cut > 0 ? base.slice(cut + 3) : base;
+    const ar = document.createElement("span");
+    ar.textContent = cut > 0 ? base.slice(0, cut) : "";
+    txt.append(t, ar);
+    b.append(txt);
     b.onclick = () => openOsz(r.blob, r.name, false);
     return b;
   }));
   $("#libEmpty").hidden = savedMaps.length > 0;
   $("#delMap").hidden = !savedMaps.some((r) => r.name === openedName);
+  dispatchEvent(new Event("maps-listed"));
 }
 $("#delMap").onclick = async () => {
   const name = openedName;
@@ -1402,6 +1571,7 @@ function skipIntro() {
 // ---- playback ----
 async function startPlay() {
   if (!core || !zipEntries) return;
+  dispatchEvent(new Event("round-start"));   // song select counts plays (Recently / Most played)
   playing = false;                          // stop the loop from updating while the round is set up
   playRate = rateOf(mods);
   const d = difficulties[+$("#diff").value];
@@ -1683,10 +1853,23 @@ function renderMods() {
     };
     box.append(b);
   }
+  // Autoplay, as one more mod button (it drives the hidden #auto checkbox the round reads)
+  const ap = document.createElement("button");
+  ap.className = "mod";
+  ap.textContent = "AP";
+  ap.title = "Autoplay: watch the map play itself perfectly";
+  ap.setAttribute("aria-pressed", String($("#auto").checked));
+  ap.onclick = () => {
+    $("#auto").checked = !$("#auto").checked;
+    $("#auto").dispatchEvent(new Event("change"));
+    renderMods();
+  };
+  box.append(ap);
   const note = $("#modsNote");
   const rate = rateOf(mods);
   note.hidden = rate === 1;
   note.textContent = rate === 1 ? "" : `The song plays at ${rate}x. The browser cannot change speed without pitch, so the pitch changes too.`;
+  dispatchEvent(new Event("mods-changed"));
 }
 
 // ---- skins ----
@@ -2773,10 +2956,12 @@ window.osuDemo = {
     document.body.style.setProperty("--logo-rgb", (menu || body) ? rgb.join(",") : "255, 102, 170");   // the tutorial's accents too
     // the corner stripes and the song bar: the skin's first two combo colours
     const homeEl = $("#home");
-    if (menu || body) {
-      homeEl.style.setProperty("--accent-a", `rgb(${rgb.join(",")})`);
-      homeEl.style.setProperty("--accent-b", `rgb(${(pal[1] || pal[0]).join(",")})`);
-    } else { homeEl.style.removeProperty("--accent-a"); homeEl.style.removeProperty("--accent-b"); }
+    for (const el of [homeEl, document.body]) {
+      if (menu || body) {
+        el.style.setProperty("--accent-a", `rgb(${rgb.join(",")})`);
+        el.style.setProperty("--accent-b", `rgb(${(pal[1] || pal[0]).join(",")})`);
+      } else { el.style.removeProperty("--accent-a"); el.style.removeProperty("--accent-b"); }
+    }
     if (!(menu || body) || !D) return;
     const dpr = Math.min(2, devicePixelRatio || 1);
     const W = D * 1.4;
@@ -3169,6 +3354,408 @@ window.osuDemo = {
   refreshCount();
   window.homeMenu = { audio, get song() { return song; }, playIndex };
 }
+
+// ---- song select: the chosen map's details, background, density graph and music preview ----
+const songSelect = (() => {
+  const sel = $("#select");
+  const preview = new Audio();
+  preview.preload = "auto";
+  let previewKey = null, previewUrl = null, previewStart = 0, fadeT = 0, bgUrl = null, bgKey = null;
+  let info = null, graph = null;
+  const vol = () => Math.max(0, Math.min(1, (S.volMusic ?? 1) * 0.7));
+  const fade = (to, ms, then) => {
+    clearInterval(fadeT);
+    const from = preview.volume, t0 = performance.now();
+    fadeT = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      preview.volume = Math.max(0, Math.min(1, from + (to - from) * k));
+      if (k >= 1) { clearInterval(fadeT); then?.(); }
+    }, 30);
+  };
+  addEventListener("menu-music-volume", () => { if (!preview.paused) { clearInterval(fadeT); preview.volume = vol(); } });
+  preview.addEventListener("ended", () => { preview.currentTime = previewStart; preview.play().catch(() => {}); });
+
+  // what the song select shows about a difficulty, read from its .osu text (with EZ / HR applied)
+  function parse(text) {
+    const out = { meta: {}, diff: { CircleSize: 5, OverallDifficulty: 5, HPDrainRate: 5, ApproachRate: null }, preview: -1, red: [], times: [], circles: 0, sliders: 0, spinners: 0, last: 0 };
+    let section = "";
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("//")) continue;
+      const h = /^\[(.+)\]$/.exec(line);
+      if (h) { section = h[1]; continue; }
+      if (section === "General" || section === "Metadata" || section === "Difficulty") {
+        const kv = /^([A-Za-z]+)\s*:\s*(.*)$/.exec(line);
+        if (!kv) continue;
+        if (section === "General" && kv[1] === "PreviewTime") out.preview = Number(kv[2]);
+        else if (section === "Metadata") out.meta[kv[1]] = kv[2];
+        else if (section === "Difficulty" && kv[1] in out.diff) out.diff[kv[1]] = Number(kv[2]);
+      } else if (section === "TimingPoints") {
+        const p = line.split(",");
+        const bl = Number(p[1]);
+        if (bl > 0 && (p.length < 7 || p[6] === "1")) out.red.push({ t: Number(p[0]), bl });
+      } else if (section === "HitObjects") {
+        const p = line.split(",");
+        const t = Number(p[2]), type = Number(p[3]);
+        if (!Number.isFinite(t)) continue;
+        out.times.push(t);
+        if (type & 8) { out.spinners++; out.last = Math.max(out.last, Number(p[5]) || t); }
+        else if (type & 2) out.sliders++;
+        else out.circles++;
+        out.last = Math.max(out.last, t);
+      }
+    }
+    if (out.diff.ApproachRate == null || !Number.isFinite(out.diff.ApproachRate)) out.diff.ApproachRate = out.diff.OverallDifficulty;
+    // BPM: lowest, highest, and the one most of the map is in
+    const end = out.last, first = out.times[0] ?? 0;
+    const spans = new Map();
+    out.red.forEach((r, k) => {
+      const from = Math.max(r.t, first), to = k + 1 < out.red.length ? Math.min(out.red[k + 1].t, end) : end;
+      const bpm = Math.round(60000 / r.bl);
+      spans.set(bpm, (spans.get(bpm) || 0) + Math.max(0, to - from));
+    });
+    const bpms = [...spans.keys()];
+    out.bpm = bpms.length ? { min: Math.min(...bpms), max: Math.max(...bpms), main: [...spans].sort((a, b) => b[1] - a[1])[0][0] } : null;
+    out.length = out.times.length ? end - first : 0;
+    return out;
+  }
+  const time = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // a colour per difficulty, easy to hard, from its approach rate / overall difficulty (osu's own colours roughly)
+  const diffColour = (d) => {
+    const v = (d.diff.ApproachRate + d.diff.OverallDifficulty) / 2;
+    return v < 4 ? "#4fc0ff" : v < 6 ? "#7cff4f" : v < 7.5 ? "#f6f05c" : v < 8.6 ? "#ff8a4f" : v < 9.4 ? "#ff4e6f" : "#c745ff";
+  };
+
+  function setBackground() {
+    const d = difficulties[0];
+    const name = d && backgroundName(d.text);
+    const key = `${openedName}|${name}`;
+    if (key === bgKey) return;
+    bgKey = key;
+    const box = $("#selBg");
+    const old = [...box.children];
+    const done = (url) => {
+      const i = document.createElement("i");
+      if (url) i.style.backgroundImage = `url("${url}")`;
+      box.append(i);
+      requestAnimationFrame(() => requestAnimationFrame(() => i.classList.add("on")));
+      for (const o of old) { o.classList.remove("on"); setTimeout(() => o.remove(), 700); }
+      if (bgUrl) { const u = bgUrl; setTimeout(() => URL.revokeObjectURL(u), 800); }
+      bgUrl = url;
+    };
+    const entry = name && zipEntries?.get(name.toLowerCase().replace(/\\/g, "/"));
+    if (!entry) return done(null);
+    entry.read().then((bytes) => done(URL.createObjectURL(new Blob([bytes])))).catch(() => done(null));
+  }
+
+  async function startPreview() {
+    if (document.body.dataset.screen !== "select" || !zipEntries || !difficulties.length) return;
+    const d = difficulties[0];
+    const key = `${openedName}|${d.meta.audio}`;
+    if (key === previewKey) {
+      if (preview.paused && preview.src) { preview.volume = 0; preview.play().then(() => fade(vol(), 500)).catch(() => {}); }
+      return;
+    }
+    previewKey = key;
+    const entry = zipEntries.get(String(d.meta.audio).toLowerCase());
+    if (!entry) return;
+    const p = parse(d.text).preview;
+    try {
+      const bytes = await entry.read();
+      if (previewKey !== key) return;          // another map was picked meanwhile
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(new Blob([bytes]));
+      preview.src = previewUrl;
+      await new Promise((r) => { preview.onloadedmetadata = r; preview.onerror = r; });
+      previewStart = p >= 0 ? p / 1000 : (preview.duration || 0) * 0.4;
+      preview.currentTime = previewStart;
+      preview.volume = 0;
+      if (document.body.dataset.screen === "select") await preview.play().then(() => fade(vol(), 700)).catch(() => {});
+    } catch (_) { /* no preview for this one */ }
+  }
+  const stopPreview = () => { if (!preview.paused) fade(0, 250, () => preview.pause()); };
+
+  function render() {
+    const has = difficulties.length > 0 && !!zipEntries;
+    $("#selMeta").hidden = !has;
+    $("#drop").hidden = has;
+    if (!has) return;
+    const k = Math.max(0, Math.min(difficulties.length - 1, +$("#diff").value || 0));
+    const d = difficulties[k];
+    const base = parse(d.text);
+    const cur = parse(mapText(d.text, mods));
+    const rate = rateOf(mods);
+    info = { ...cur, rate };
+    const m = base.meta;
+    $("#selTitle").textContent = m.TitleUnicode || m.Title || d.meta.title || "";
+    $("#selArtist").textContent = m.ArtistUnicode || m.Artist || d.meta.artist || "";
+    $("#selMapper").innerHTML = m.Creator ? `mapped by <b>${esc(m.Creator)}</b>${m.Source ? ` · ${esc(m.Source)}` : ""}` : esc(m.Source || "");
+    $("#info").textContent = `${m.Artist || d.meta.artist} – ${m.Title || d.meta.title}`;
+    // the chosen difficulty's name on the left; all of them drop down under the map's card on the right
+    $("#selDiffName").style.setProperty("--dc", diffColour(base));
+    $("#selDiffName").innerHTML = `<i></i><span>${esc(d.name)}</span>`;
+    renderDiffs(k);
+    // numbers
+    const bpm = cur.bpm ? (cur.bpm.min === cur.bpm.max ? `${Math.round(cur.bpm.main * rate)}` : `${Math.round(cur.bpm.min * rate)}–${Math.round(cur.bpm.max * rate)}`) : "–";
+    const ch = rate !== 1 ? ' class="changed"' : "";
+    $("#selStats").innerHTML = `<div${ch}><b>${time(cur.length / rate)}</b><span>Length</span></div><div${ch}><b>${bpm}</b><span>BPM</span></div>`
+      + `<div><b>${cur.circles}</b><span>Circles</span></div><div><b>${cur.sliders}</b><span>Sliders</span></div><div><b>${cur.spinners}</b><span>Spinners</span></div>`;
+    const bar = (label, v, v0) => {
+      const cls = v > v0 + 0.01 ? "up" : v < v0 - 0.01 ? "down" : "";
+      return `<span>${label}</span><i style="--v:${Math.max(0, Math.min(10, v)) * 10}%"></i><em class="${cls}">${Math.round(v * 10) / 10}</em>`;
+    };
+    $("#selBars").innerHTML = bar("Circle size", cur.diff.CircleSize, base.diff.CircleSize) + bar("Approach rate", cur.diff.ApproachRate, base.diff.ApproachRate)
+      + bar("Accuracy", cur.diff.OverallDifficulty, base.diff.OverallDifficulty) + bar("HP drain", cur.diff.HPDrainRate, base.diff.HPDrainRate);
+    // density graph: objects per slice of the map, smoothed
+    const n = 90, first = cur.times[0] ?? 0, span = Math.max(1, cur.last - first);
+    const counts = new Array(n).fill(0);
+    for (const t of cur.times) counts[Math.min(n - 1, Math.floor(((t - first) / span) * n))]++;
+    const sm = counts.map((_, i2) => (counts[i2 - 1] ?? counts[i2]) * 0.25 + counts[i2] * 0.5 + (counts[i2 + 1] ?? counts[i2]) * 0.25);
+    const max = Math.max(1, ...sm);
+    graph = { vals: sm.map((v) => v / max), first, span };
+  }
+
+  // the graph, with the preview's position on it (redrawn while song select is up)
+  function drawGraph() {
+    requestAnimationFrame(drawGraph);
+    if (document.body.dataset.screen !== "select" || !graph || $("#selMeta").hidden) return;
+    const cv = $("#selGraph"), dpr = Math.min(2, devicePixelRatio || 1);
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (!W) return;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const cs = getComputedStyle(document.body);
+    const a = cs.getPropertyValue("--accent-a").trim() || "#ff66aa", b2 = cs.getPropertyValue("--accent-b").trim() || "#ffa64d";
+    const pos = preview.src && !preview.paused ? (preview.currentTime * 1000 - graph.first) / graph.span : -1;
+    const n = graph.vals.length, bw = W / n;
+    const grad = g.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0, a); grad.addColorStop(1, b2);
+    for (let i = 0; i < n; i++) {
+      const h = Math.max(2, graph.vals[i] * (H - 4));
+      const played = pos >= 0 && i / n <= pos;
+      g.globalAlpha = played ? 0.95 : 0.4;
+      g.fillStyle = grad;
+      g.fillRect(i * bw + 0.5, H - h, Math.max(1, bw - 1.5), h);
+    }
+    g.globalAlpha = 1;
+    if (pos >= 0 && pos <= 1) { g.fillStyle = "#fff"; g.fillRect(pos * W - 1, 0, 2, H); }
+  }
+  requestAnimationFrame(drawGraph);
+
+  // search and keyboard: ↑ ↓ change map, ← → change difficulty
+  const visibleCards = () => [...$("#lib").querySelectorAll("button.item")].filter((c) => !c.hidden);
+  function filter() {
+    const q = $("#selSearch").value.trim().toLowerCase();
+    let shown = 0;
+    for (const c of $("#lib").querySelectorAll("button.item")) { const ok = !q || (c.dataset.name || "").toLowerCase().includes(q); c.hidden = !ok; if (ok) shown++; }
+    // a group header shows while any of its cards does; the difficulties follow their map's card
+    let head = null, any = false;
+    for (const el of $("#lib").children) {
+      if (el.classList.contains("grp")) { if (head) head.hidden = !any; head = el; any = false; }
+      else if (el.classList.contains("item") && !el.hidden) any = true;
+      else if (el.classList.contains("diffgroup")) el.hidden = !!el.previousElementSibling?.hidden;
+    }
+    if (head) head.hidden = !any;
+    $("#selCount").textContent = savedMaps.length ? (q ? `${shown} of ${savedMaps.length}` : `${savedMaps.length} map${savedMaps.length === 1 ? "" : "s"}`) : "";
+  }
+  $("#selSearch").oninput = filter;
+  // scrolls only the card list (scrollIntoView would also scroll the song select itself and push the layout up)
+  const centre = () => {
+    const lib = $("#lib");
+    const c = [...lib.children].find((x) => x.getAttribute("aria-pressed") === "true");
+    sel.scrollTop = 0; sel.scrollLeft = 0;
+    if (!c) return;
+    const dg = c.nextElementSibling?.classList.contains("diffgroup") ? c.nextElementSibling : null;
+    const h = Math.min(lib.clientHeight * 0.8, c.offsetHeight + (dg ? dg.offsetHeight : 0));
+    const top = c.offsetTop - lib.offsetTop - (lib.clientHeight - h) / 2;
+    lib.scrollTo({ top: Math.max(0, top), behavior: document.body.classList.contains("calm") ? "auto" : "smooth" });
+  };
+
+  // ---- the carousel: difficulties under the open map, sorting, grouping, play history ----
+  const store = {
+    get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage blocked */ } },
+  };
+  const history = store.get("osuweb.plays", {});        // map name -> { n: plays, t: last played }
+  const dotsCache = store.get("osuweb.diffdots", {});   // map name -> difficulty colours, once opened
+  const added = store.get("osuweb.added", {});          // map name -> first seen (for Date added)
+  const lib = $("#lib");
+  const cardOf = (name) => [...lib.querySelectorAll("button.item")].find((c) => c.dataset.name === name);
+  const titleOf = (name) => { const b = name.replace(/\.(osz|zip)$/i, "").replace(/^\d+\s+/, ""); const c = b.indexOf(" - "); return { title: c > 0 ? b.slice(c + 3) : b, artist: c > 0 ? b.slice(0, c) : "" }; };
+  addEventListener("round-start", () => {
+    if (!openedName) return;
+    const h = history[openedName] || { n: 0, t: 0 };
+    history[openedName] = { n: h.n + 1, t: Date.now() };
+    store.set("osuweb.plays", history);
+  });
+  function renderDiffs(k) {
+    const card = cardOf(openedName);
+    const old = lib.querySelector(".diffgroup");
+    // same map, already dropped down under its card: just move the selection
+    if (old && card && old.dataset.map === openedName && old.previousElementSibling === card && old.children.length === difficulties.length) {
+      [...old.children].forEach((b, n) => b.setAttribute("aria-checked", String(n === k)));
+      return;
+    }
+    old?.remove();
+    if (!card) return;
+    const cols = difficulties.map((dd) => diffColour(parse(dd.text)));
+    if (JSON.stringify(dotsCache[openedName]) !== JSON.stringify(cols)) { dotsCache[openedName] = cols; store.set("osuweb.diffdots", dotsCache); setDots(card, cols); }
+    const box = document.createElement("div");
+    box.className = "diffgroup";
+    box.dataset.map = openedName;
+    box.setAttribute("role", "radiogroup");
+    box.setAttribute("aria-label", "Difficulty");
+    difficulties.forEach((dd, n) => {
+      const p = parse(dd.text);
+      const b = document.createElement("button");
+      b.className = "diff";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(n === k));
+      b.style.setProperty("--dc", cols[n]);
+      b.style.setProperty("--n", n);
+      const r1 = (v) => Math.round(v * 10) / 10;
+      b.innerHTML = `<span class="dn"><b>${esc(dd.name)}${p.meta.Creator ? `<small>mapped by ${esc(p.meta.Creator)}</small>` : ""}</b>`
+        + `<span class="dstat"><span>AR ${r1(p.diff.ApproachRate)}</span><span>OD ${r1(p.diff.OverallDifficulty)}</span><span>CS ${r1(p.diff.CircleSize)}</span><span>${dd.objects} objects</span></span></span>`;
+      b.onclick = () => { $("#diff").value = String(n); render(); };
+      b.ondblclick = () => { if (!$("#play").disabled) $("#play").click(); };
+      box.append(b);
+    });
+    card.after(box);
+    box.hidden = card.hidden;
+  }
+  function setDots(card, cols) {
+    card.querySelector(".dots")?.remove();
+    if (!cols?.length) return;
+    const d = document.createElement("span");
+    d.className = "dots";
+    d.innerHTML = cols.slice(0, 14).map((c) => `<i style="--dc:${c}"></i>`).join("");
+    card.querySelector(".txt")?.append(d);
+  }
+  // reorders the cards (renderMapList builds them in storage order) and adds group headers
+  function arrange() {
+    const sort = $("#selSort").value, group = $("#selGroup").value;
+    const now = Date.now();
+    let changed = false;
+    for (const r of savedMaps) if (!added[r.name]) { added[r.name] = now; changed = true; }
+    if (changed) store.set("osuweb.added", added);
+    const cards = [...lib.querySelectorAll("button.item")];
+    const info = new Map(cards.map((c) => [c, titleOf(c.dataset.name)]));
+    const cmp = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+    const key = {
+      title: (a, b) => cmp(info.get(a).title, info.get(b).title),
+      artist: (a, b) => cmp(info.get(a).artist, info.get(b).artist) || cmp(info.get(a).title, info.get(b).title),
+      recent: (a, b) => (history[b.dataset.name]?.t || 0) - (history[a.dataset.name]?.t || 0) || cmp(info.get(a).title, info.get(b).title),
+      plays: (a, b) => (history[b.dataset.name]?.n || 0) - (history[a.dataset.name]?.n || 0) || cmp(info.get(a).title, info.get(b).title),
+      added: (a, b) => (added[b.dataset.name] || 0) - (added[a.dataset.name] || 0) || cmp(info.get(a).title, info.get(b).title),
+    }[sort] || (() => 0);
+    const letter = (t) => { const c = (t || "").trim().charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : /[0-9]/.test(c) ? "0–9" : "#"; };
+    const groupOf = {
+      title: (c) => letter(info.get(c).title),
+      artist: (c) => letter(info.get(c).artist),
+      played: (c) => (history[c.dataset.name]?.n ? "Played" : "Not played yet"),
+    }[group];
+    let ordered = cards.slice().sort(key);
+    if (groupOf) {
+      // groups in order of their first card under the sort, cards keep the sort inside each group
+      const order = [];
+      const byGroup = new Map();
+      for (const c of ordered) { const g = groupOf(c); if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); } byGroup.get(g).push(c); }
+      if (group !== "played") order.sort((a, b) => (a === "#") - (b === "#") || (a === "0–9") - (b === "0–9") || cmp(a, b));
+      else order.sort((a) => (a === "Played" ? -1 : 1));
+      ordered = [];
+      for (const g of order) { const h = document.createElement("div"); h.className = "grp"; h.textContent = g; ordered.push(h, ...byGroup.get(g)); }
+    }
+    lib.querySelectorAll(".grp").forEach((h) => h.remove());
+    ordered.forEach((el, i) => { el.style.setProperty("--i", i); lib.append(el); });
+    for (const c of cards) setDots(c, dotsCache[c.dataset.name]);
+    if (difficulties.length && openedName) renderDiffs(+$("#diff").value || 0);
+    filter();
+  }
+  for (const id of ["selSort", "selGroup"]) {
+    const el = $("#" + id);
+    el.value = store.get("osuweb." + id, el.value);
+    if (!el.value) el.selectedIndex = 0;
+    el.onchange = () => { store.set("osuweb." + id, el.value); arrange(); setTimeout(centre, 30); };
+  }
+  const random = () => {
+    const cards = visibleCards().filter((c) => c.getAttribute("aria-pressed") !== "true");
+    cards[Math.floor(Math.random() * cards.length)]?.click();
+  };
+  $("#selRandom").onclick = random;
+  addEventListener("keydown", (e) => { if (e.code === "F2" && document.body.dataset.screen === "select") { e.preventDefault(); random(); } });
+
+  // ---- going into song select from the menu: a wipe, then the panels slide in ----
+  let lastScreen = document.body.dataset.screen;
+  function wipeTo(x, y, then) {
+    if (document.body.classList.contains("calm")) return then();
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) * 1.05;
+    const w = document.createElement("div");
+    w.id = "wipe";
+    Object.assign(w.style, { width: `${r * 2}px`, height: `${r * 2}px`, left: `${x - r}px`, top: `${y - r}px` });
+    document.body.append(w);
+    w.animate([{ transform: "scale(0)" }, { transform: "scale(1)" }], { duration: 380, easing: "cubic-bezier(.55, 0, .75, .3)", fill: "forwards" }).onfinish = () => {
+      then();
+      w.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: "ease-out", fill: "forwards" }).onfinish = () => w.remove();
+    };
+  }
+  const soloBtn = $("#menuSolo");
+  const soloGo = soloBtn.onclick;
+  soloBtn.onclick = () => {
+    const r = soloBtn.getBoundingClientRect();
+    wipeTo(r.left + r.width / 2, r.top + r.height / 2, () => soloGo());
+  };
+  function enter() {
+    sel.classList.remove("entering");
+    void sel.offsetWidth;
+    sel.classList.add("entering");
+    setTimeout(() => sel.classList.remove("entering"), 1100);
+  }
+  addEventListener("maps-listed", () => { arrange(); });
+  addEventListener("map-opened", () => { render(); setBackground(); startPreview(); setTimeout(centre, 60); });
+  addEventListener("mods-changed", () => render());
+  addEventListener("keydown", (e) => {
+    if (document.body.dataset.screen !== "select" || !$("#settings").hidden || !$("#importer").hidden || !$("#tour").hidden) return;
+    if (e.target.closest?.("input, select, textarea")) {
+      // Esc in the search box clears it (a second Esc goes back as usual)
+      if (e.code === "Escape" && e.target.id === "selSearch") {
+        e.stopImmediatePropagation(); e.preventDefault();
+        if (e.target.value) { e.target.value = ""; filter(); }
+        e.target.blur();
+      }
+      return;
+    }
+    if (e.code === "ArrowDown" || e.code === "ArrowUp") {
+      e.preventDefault();
+      const cards = visibleCards();
+      if (!cards.length) return;
+      const k = cards.findIndex((c) => c.getAttribute("aria-pressed") === "true");
+      const next = cards[Math.max(0, Math.min(cards.length - 1, k < 0 ? 0 : k + (e.code === "ArrowDown" ? 1 : -1)))];
+      if (next && next.getAttribute("aria-pressed") !== "true") next.click();
+    } else if ((e.code === "ArrowLeft" || e.code === "ArrowRight") && difficulties.length > 1) {
+      e.preventDefault();
+      const k = (+$("#diff").value || 0) + (e.code === "ArrowRight" ? 1 : -1);
+      $("#diff").value = String(Math.max(0, Math.min(difficulties.length - 1, k)));
+      render();
+    } else if (e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && !S.keys.some((kk) => kk.code === e.code)) {
+      $("#selSearch").focus();               // typing starts a search
+    }
+  }, true);
+  // entering song select: the preview carries on (or starts; with nothing open yet, the first map opens);
+  // leaving it fades the preview out
+  new MutationObserver(() => {
+    const scr = document.body.dataset.screen, from = lastScreen;
+    lastScreen = scr;
+    if (scr === "select" && (from === "playmenu" || from === "menu")) enter();
+    if (document.body.dataset.screen === "select") {
+      if (!zipEntries && savedMaps.length) { const c = visibleCards()[0]; c?.click(); }
+      else { startPreview(); render(); setTimeout(centre, 60); }
+    } else stopPreview();
+  }).observe(document.body, { attributes: true, attributeFilter: ["data-screen"] });
+  return { render };
+})();
 
 // ---- import from an osu! (stable) install ----
 // The person picks their osu! folder (or its Songs / Skins folder) with a folder picker; every beatmap folder (one
