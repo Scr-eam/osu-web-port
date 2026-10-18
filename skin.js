@@ -16,6 +16,8 @@ const FIXED_SPRITES = new Set([
   "spinner-approachcircle", "spinner-background", "spinner-circle", "spinner-metre",
   "spinner-top", "spinner-middle", "spinner-middle2", "spinner-bottom", "spinner-glow",
   "cursor", "cursormiddle", "cursortrail",
+  // the main menu's centre logo
+  "menu-osu",
   "hit300", "hit300g", "hit100", "hit50", "hit0",
   // The legacy health bar: its background, the single colour image (when there are no animation frames),
   // and the marker, which is either the newer scorebar-marker or the older ki heads.
