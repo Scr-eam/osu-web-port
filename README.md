@@ -1,6 +1,6 @@
 <div align="center">
 
-# osu! web
+# ![osu! web](https://scr-eam.github.io/osu-web-port/)
 
 **A browser port of osu!lazer: solo, offline, no install.**
 
