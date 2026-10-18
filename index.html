@@ -64,8 +64,10 @@
   #home .stripes.tr { top: 0; right: 0; }
   #home .stripes.bl { bottom: 0; left: 0; transform: rotate(180deg); }
   #home .stripes i { position: absolute; top: -40px; right: 120px; width: 46px; height: 900px; transform-origin: top right; transform: rotate(-45deg); }
-  #home .stripes i:nth-child(1) { background: linear-gradient(var(--pink), #ff3d8b); }
-  #home .stripes i:nth-child(2) { right: 40px; width: 26px; background: linear-gradient(var(--orange), #ff8a3d); opacity: .9; }
+  /* the corner stripes and the song bar take the skin's first two combo colours (set with the logo), pink/orange without one */
+  #home { --accent-a: var(--pink); --accent-b: var(--orange); }
+  #home .stripes i:nth-child(1) { background: linear-gradient(var(--accent-a), color-mix(in srgb, var(--accent-a), #000 14%)); transition: background .4s; }
+  #home .stripes i:nth-child(2) { right: 40px; width: 26px; background: linear-gradient(var(--accent-b), color-mix(in srgb, var(--accent-b), #000 14%)); opacity: .9; }
   #home .stripes i:nth-child(3) { right: -20px; width: 10px; background: rgba(255,255,255,.18); }
   #home .stripes i { animation: stripe-in .9s cubic-bezier(.2, .8, .2, 1) both; }
   #home .stripes i:nth-child(2) { animation-delay: .08s; }
@@ -76,7 +78,8 @@
   #home .card { position: absolute; top: 16px; left: 18px; display: flex; align-items: center; gap: 14px; padding: 10px 18px 10px 10px;
     border-radius: 16px 40px 40px 16px; background: rgba(20, 14, 40, .72); border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(6px); }
   #home .card .badge { width: 48px; height: 48px; border-radius: 50%; border: 3px solid #fff; display: grid; place-items: center;
-    background: radial-gradient(circle at 50% 35%, #ff9ac9, var(--pink) 55%, #b8306f); font: 700 22px/1 "Fredoka", "Inter", sans-serif; color: #fff; }
+    background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--accent-a), #fff 40%), var(--accent-a) 55%, color-mix(in srgb, var(--accent-a), #000 30%));
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .35); box-shadow: 0 0 18px color-mix(in srgb, var(--accent-a), transparent 55%); font: 700 22px/1 "Fredoka", "Inter", sans-serif; color: #fff; }
   #home .card .lines { display: flex; flex-direction: column; gap: 2px; text-align: left; }
   #home .card b { font-size: 15px; font-weight: 700; }
   #home .card span { font-size: 12.5px; color: rgba(225, 215, 255, .72); font-variant-numeric: tabular-nums; }
@@ -90,7 +93,7 @@
   #home .controls button:hover { background: rgba(122, 77, 255, .5); border-color: rgba(255,255,255,.35); }
   #home .controls svg { width: 16px; height: 16px; fill: #fff; }
   #home .progress { width: 132px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; }
-  #home .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pink), var(--orange)); }
+  #home .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-a), var(--accent-b)); }
   #home .build { position: absolute; left: 14px; bottom: 12px; z-index: 6; color: #f1ecff; font-size: 12.5px; font-weight: 600;
     padding: 5px 11px; border-radius: 999px; background: rgba(14, 10, 28, .78); border: 1px solid rgba(255, 255, 255, .12);
     backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
@@ -151,6 +154,13 @@
   #tour .tfoot button.skip { border: none; background: none; color: rgba(240, 234, 255, .6); padding: 7px 6px; }
   #tour .tfoot button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   body.calm #tour .hole, body.calm #tour .tcard { transition: none; }
+  /* while booting, a dark veil covers everything so the default look never flashes before the saved skin */
+  #bootVeil { position: fixed; inset: 0; z-index: 3000; background: var(--night); display: grid; place-items: center;
+    transition: opacity .45s ease, visibility 0s linear .45s; }
+  body:not(.booting) #bootVeil { opacity: 0; visibility: hidden; pointer-events: none; }
+  #bootVeil i { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .12); border-top-color: rgba(255, 255, 255, .7);
+    animation: veil-spin .8s linear infinite; opacity: 0; animation-delay: .4s; animation-fill-mode: both; }
+  @keyframes veil-spin { from { opacity: 1; transform: rotate(0); } to { opacity: 1; transform: rotate(360deg); } }
   /* booting: the saved skin and settings are still loading; the logo stays hidden (and its intro waits) until they are in */
   #home .logo-spot { transition: left .55s cubic-bezier(.3, .9, .3, 1), opacity .35s ease; }
   #home .hint { transition: opacity .35s ease; }
@@ -235,6 +245,29 @@
   .settings-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; width: 100%; }
   .settings-row > span { color: var(--muted); min-width: 6em; }
   #settings .panel { width: min(92vw, 900px); align-items: stretch; text-align: left; }
+  /* import from an osu! install: pick the folder, choose what to bring over */
+  #ui > #importer { z-index: 20; }
+  #importer .panel { width: min(92vw, 760px); max-height: 92vh; align-items: stretch; text-align: left; gap: 12px; }
+  #importer h2 { margin: 0; }
+  #importer p { margin: 0; color: #c9c3e0; line-height: 1.5; font-size: 14px; }
+  #importer code { font: 600 12.5px ui-monospace, Consolas, monospace; padding: 2px 6px; border-radius: 5px; background: rgba(255, 255, 255, .08); color: #fff; user-select: all; }
+  #importer .pickrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #importer .lists { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 0; }
+  @media (max-width: 640px) { #importer .lists { grid-template-columns: 1fr; } }
+  #importer .lists[hidden] { display: none; }
+  #importer .group { display: flex; flex-direction: column; gap: 6px; min-height: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  #importer .ghead { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+  #importer .ghead input[type=search] { margin-left: auto; width: 46%; min-width: 0; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); background: rgba(0,0,0,.25); color: #fff; font-size: 13px; }
+  #importer .items { overflow: auto; max-height: min(38vh, 340px); display: flex; flex-direction: column; gap: 1px; }
+  #importer .items label { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  #importer .items label:hover { background: rgba(255,255,255,.05); }
+  #importer .items label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #importer .items label small { color: #8f88aa; flex: none; }
+  #importer .items label.have { opacity: .55; }
+  #importer .foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #importer .foot .muted { margin-right: auto; font-size: 13px; }
+  #importer progress { width: 100%; height: 8px; accent-color: var(--pink); }
+  #importer .inote { font-size: 13px; color: #b9b2d4; border-left: 3px solid rgba(255,255,255,.15); padding-left: 10px; }
   #more { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 4px 22px; }
   #more h3 { grid-column: 1 / -1; margin: 10px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
   .setting { display: flex; align-items: center; gap: 8px; color: #ccd; cursor: pointer; }
@@ -256,9 +289,11 @@
 </style>
 </head>
 <body data-screen="menu" class="booting">
+<div id="bootVeil" aria-hidden="true"><i></i></div>
 <script>setTimeout(() => document.body.classList.remove("booting"), 6000);   // never stay hidden if start-up fails</script>
 <input type="file" id="file" accept=".osz,.zip" hidden>
 <input type="file" id="sf" accept=".osk,.zip" hidden>
+<input type="file" id="osuDir" webkitdirectory directory multiple hidden>
 
 <div id="stage">
   <video id="bgVideo" muted playsinline preload="auto" hidden></video>
@@ -312,6 +347,7 @@
       <div class="col">
         <div class="col-actions">
           <button id="open">Open .osz</button>
+          <button id="impOpen">Import from osu!</button>
           <button id="delMap" hidden>Forget</button>
         </div>
         <div id="lib" aria-label="Saved beatmaps"></div>
@@ -356,6 +392,29 @@
     </div>
   </section>
 
+  <section id="importer" class="overlay" aria-label="Import from osu!" hidden>
+    <div class="panel">
+      <h2>Import from osu!</h2>
+      <p>Bring over the beatmaps and skins you already have in <b>osu!</b> (stable), so you don't have to download them again. Pick your osu! folder; nothing is uploaded anywhere, it's copied into this browser.</p>
+      <p>On Windows it's usually <code>%LOCALAPPDATA%\osu!</code>: paste that into the folder box of the picker. You can also pick just the <b>Songs</b> or <b>Skins</b> folder inside it, which is quicker.</p>
+      <div class="pickrow"><button id="impPick" class="primary">Choose osu! folder</button><span class="muted" id="impScan"></span></div>
+      <div class="inote" id="impLazer" hidden></div>
+      <div class="lists" id="impLists" hidden>
+        <div class="group">
+          <div class="ghead"><input type="checkbox" id="impAllMaps"><span id="impMapsHead">Beatmaps</span><input type="search" id="impMapFilter" placeholder="Search" aria-label="Search beatmaps"></div>
+          <div class="items" id="impMaps"></div>
+        </div>
+        <div class="group">
+          <div class="ghead"><input type="checkbox" id="impAllSkins"><span id="impSkinsHead">Skins</span><input type="search" id="impSkinFilter" placeholder="Search" aria-label="Search skins"></div>
+          <div class="items" id="impSkinList"></div>
+        </div>
+      </div>
+      <progress id="impProg" hidden></progress>
+      <div class="foot"><span class="muted" id="impSize"></span><button id="impClose">Close</button><button id="impGo" class="primary" hidden>Import</button></div>
+      <p class="inote">Using <b>osu!lazer</b>? It keeps files in its own database, which a web page can't read. In lazer, right-click a beatmap or skin and choose <b>Export</b>, then add the .osz / .osk file here. If you still have osu!stable installed, import from that instead.</p>
+    </div>
+  </section>
+
   <section id="settings" class="overlay" aria-label="Settings" hidden>
     <div class="panel">
       <h2>Settings</h2>
@@ -373,6 +432,7 @@
         <span>Skin</span>
         <select id="skin" aria-label="Skin"></select>
         <button id="addSkin">Add .osk</button>
+        <button id="impSkins">Import from osu!</button>
         <button id="delSkin" hidden>Remove</button>
       </div>
       <div id="more"></div>
@@ -2677,6 +2737,13 @@ window.osuDemo = {
     cookie.classList.toggle("skinned", !!(menu || body));
     cookie.classList.toggle("menu-osu", !!menu);
     cookie.style.setProperty("--logo-rgb", (menu || body) ? rgb.join(",") : "255, 102, 170");
+    document.body.style.setProperty("--logo-rgb", (menu || body) ? rgb.join(",") : "255, 102, 170");   // the tutorial's accents too
+    // the corner stripes and the song bar: the skin's first two combo colours
+    const homeEl = $("#home");
+    if (menu || body) {
+      homeEl.style.setProperty("--accent-a", `rgb(${rgb.join(",")})`);
+      homeEl.style.setProperty("--accent-b", `rgb(${(pal[1] || pal[0]).join(",")})`);
+    } else { homeEl.style.removeProperty("--accent-a"); homeEl.style.removeProperty("--accent-b"); }
     if (!(menu || body) || !D) return;
     const dpr = Math.min(2, devicePixelRatio || 1);
     const W = D * 1.4;
@@ -3070,6 +3137,237 @@ window.osuDemo = {
   window.homeMenu = { audio, get song() { return song; }, playIndex };
 }
 
+// ---- import from an osu! (stable) install ----
+// The person picks their osu! folder (or its Songs / Skins folder) with a folder picker; every beatmap folder (one
+// holding .osu files) and skin folder (holding skin.ini or skin images) found in it is listed. Each chosen one is
+// packed into a plain zip, the same as an .osz / .osk, and saved like an imported file. osu!lazer stores files under
+// hashes with a Realm database, which can't be read here, so a lazer folder gets an explanation instead.
+const osuImport = (() => {
+  const el = $("#importer");
+  const CRC = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c; });
+  const crc32 = (u8, c = 0xffffffff) => { for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return c; };
+  const enc = new TextEncoder();
+  // a stored (uncompressed) zip of [path, File] pairs; osu! files are mostly audio and images, which don't compress
+  async function zipFiles(files, cancelled) {
+    const parts = [], central = [];
+    let offset = 0;
+    for (const [path, file] of files) {
+      if (cancelled()) return null;
+      const name = enc.encode(path);
+      const data = new Uint8Array(await file.arrayBuffer());
+      const crc = (crc32(data) ^ 0xffffffff) >>> 0;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true);
+      parts.push(lh, name, file);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+      ch.setUint32(42, offset, true);
+      central.push(ch, name);
+      offset += 30 + name.length + data.length;
+    }
+    const cdSize = central.reduce((n, p) => n + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end], { type: "application/zip" });
+  }
+  const IMG = /\.(png|jpe?g)$/i;
+  const fmt = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`;
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  let found = { maps: [], skins: [] }, busy = false, cancel = false;
+
+  // folder tree from the picked files: path (lowercased, "/" separated) -> { name, files: [[relPath, File]], dirs }
+  function scan(fileList) {
+    const dirs = new Map();
+    const dir = (path, name) => { if (!dirs.has(path)) dirs.set(path, { path, name, files: [], subs: new Set() }); return dirs.get(path); };
+    for (const f of fileList) {
+      const parts = (f.webkitRelativePath || f.name).split("/");
+      let path = "";
+      for (let k = 0; k < parts.length - 1; k++) {
+        const parent = path;
+        path = path ? `${path}/${parts[k]}` : parts[k];
+        dir(path, parts[k]);
+        if (parent) dirs.get(parent).subs.add(path);
+      }
+      dir(path, parts[parts.length - 2] || "").files.push([parts.at(-1), f]);
+    }
+    // every file under a folder, with paths relative to it
+    const allUnder = (d, prefix = "") => {
+      const out = d.files.map(([n, f]) => [prefix + n, f]);
+      for (const s of d.subs) { const sd = dirs.get(s); out.push(...allUnder(sd, `${prefix}${sd.name}/`)); }
+      return out;
+    };
+    const maps = [], skins = [];
+    let lazer = false;
+    for (const d of dirs.values()) {
+      const names = d.files.map(([n]) => n.toLowerCase());
+      if (names.includes("client.realm")) lazer = true;
+      if (names.some((n) => n.endsWith(".osu"))) {
+        const files = allUnder(d);
+        maps.push({ kind: "map", name: d.name, files, size: files.reduce((n, [, f]) => n + f.size, 0) });
+      } else if (names.includes("skin.ini") || (/(^|\/)skins\/[^/]+$/i.test(d.path) && names.some((n) => IMG.test(n)))) {
+        const files = allUnder(d);
+        skins.push({ kind: "skin", name: d.name, files, size: files.reduce((n, [, f]) => n + f.size, 0) });
+      }
+    }
+    return { maps: maps.sort((a, b) => a.name.localeCompare(b.name)), skins: skins.sort((a, b) => a.name.localeCompare(b.name)), lazer };
+  }
+
+  function renderList(kind) {
+    const items = kind === "map" ? found.maps : found.skins;
+    const box = kind === "map" ? $("#impMaps") : $("#impSkinList");
+    const q = (kind === "map" ? $("#impMapFilter") : $("#impSkinFilter")).value.trim().toLowerCase();
+    const shown = items.filter((it) => !q || it.name.toLowerCase().includes(q)).slice(0, 3000);
+    box.innerHTML = shown.length ? "" : `<div class="muted" style="padding:6px">${items.length ? "Nothing matches." : kind === "map" ? "No beatmap folders found here." : "No skin folders found here."}</div>`;
+    const frag = document.createDocumentFragment();
+    for (const it of shown) {
+      const l = document.createElement("label");
+      l.className = it.have ? "have" : "";
+      l.innerHTML = `<input type="checkbox"${it.on ? " checked" : ""}><span title="${esc(it.name)}">${esc(it.name)}</span><small>${it.have ? "added" : fmt(it.size)}</small>`;
+      l.firstChild.onchange = (e) => { it.on = e.target.checked; summary(); };
+      frag.append(l);
+    }
+    box.append(frag);
+    const all = kind === "map" ? $("#impAllMaps") : $("#impAllSkins");
+    const fresh = items.filter((it) => !it.have);
+    all.checked = fresh.length > 0 && fresh.every((it) => it.on);
+    all.disabled = !items.length;
+  }
+  async function summary() {
+    const sel = [...found.maps, ...found.skins].filter((it) => it.on);
+    const bytes = sel.reduce((n, it) => n + it.size, 0);
+    let free = "";
+    try {
+      const est = await navigator.storage?.estimate?.();
+      if (est?.quota) free = ` · ${fmt(Math.max(0, est.quota - (est.usage || 0)))} free for this site`;
+    } catch (_) { /* unknown */ }
+    $("#impSize").textContent = sel.length ? `${sel.length} selected · ${fmt(bytes)}${free}` : "Nothing selected";
+    $("#impGo").disabled = !sel.length || busy;
+    const nm = found.maps.length, nmh = found.maps.filter((m) => m.have).length;
+    const ns = found.skins.length, nsh = found.skins.filter((m) => m.have).length;
+    $("#impMapsHead").textContent = `Beatmaps (${nm}${nmh ? `, ${nmh} added` : ""})`;
+    $("#impSkinsHead").textContent = `Skins (${ns}${nsh ? `, ${nsh} added` : ""})`;
+  }
+  const setAll = (kind, on) => {
+    for (const it of kind === "map" ? found.maps : found.skins) if (!it.have) it.on = on;
+    renderList(kind); summary();
+  };
+  $("#impAllMaps").onchange = (e) => setAll("map", e.target.checked);
+  $("#impAllSkins").onchange = (e) => setAll("skin", e.target.checked);
+  $("#impMapFilter").oninput = () => renderList("map");
+  $("#impSkinFilter").oninput = () => renderList("skin");
+
+  $("#impPick").onclick = () => $("#osuDir").click();
+  $("#osuDir").onchange = async (e) => {
+    const list = [...e.target.files];
+    e.target.value = "";
+    if (!list.length) return;
+    $("#impScan").textContent = `Looking through ${list.length.toLocaleString()} files…`;
+    await new Promise((r) => setTimeout(r, 30));
+    const res = scan(list);
+    const haveMaps = new Set((await listMaps()).map((r) => r.name.replace(/\.osz$/i, "").toLowerCase()));
+    const haveSkins = new Set(skinRecords.map((r) => r.name.toLowerCase()));
+    found = {
+      maps: res.maps.map((m) => ({ ...m, have: haveMaps.has(m.name.toLowerCase()), on: !haveMaps.has(m.name.toLowerCase()) })),
+      skins: res.skins.map((s) => ({ ...s, have: haveSkins.has(s.name.toLowerCase()), on: false })),
+    };
+    $("#impLazer").hidden = !(res.lazer && !found.maps.length && !found.skins.length);
+    $("#impLazer").textContent = "That looks like an osu!lazer folder. Lazer keeps its files in a database that a web page can't read, so nothing can be imported from it. Use Export inside lazer instead (see below), or pick an osu!stable folder.";
+    $("#impScan").textContent = `Found ${found.maps.length} beatmap${found.maps.length === 1 ? "" : "s"} and ${found.skins.length} skin${found.skins.length === 1 ? "" : "s"}.`;
+    $("#impLists").hidden = !(found.maps.length || found.skins.length);
+    $("#impGo").hidden = $("#impLists").hidden;
+    renderList("map"); renderList("skin"); summary();
+  };
+
+  // osu!standard check and the cover, from a beatmap folder's .osu files
+  async function mapInfo(it) {
+    let std = false, cover = null;
+    for (const [path, f] of it.files) {
+      if (!/\.osu$/i.test(path)) continue;
+      const text = await f.text();
+      const mode = /^\s*Mode\s*:\s*(\d+)/im.exec(text);
+      if (mode && mode[1] !== "0") continue;
+      std = true;
+      const bg = backgroundName(text);
+      const bgFile = bg && it.files.find(([p]) => p.toLowerCase() === bg.toLowerCase().replace(/\\/g, "/"));
+      if (bgFile) { cover = await makeCover(new Uint8Array(await bgFile[1].arrayBuffer()), bg); break; }
+    }
+    return { std, cover };
+  }
+
+  $("#impGo").onclick = async () => {
+    if (busy) return;
+    const sel = [...found.maps, ...found.skins].filter((it) => it.on && !it.done);
+    if (!sel.length) return;
+    busy = true; cancel = false;
+    $("#impGo").disabled = true;
+    $("#impPick").disabled = true;
+    $("#impClose").textContent = "Stop";
+    const prog = $("#impProg");
+    prog.hidden = false; prog.max = sel.length; prog.value = 0;
+    let maps = 0, skins = 0, skipped = 0, failed = 0;
+    for (const it of sel) {
+      if (cancel) break;
+      $("#impSize").textContent = `Importing ${prog.value + 1} of ${sel.length}: ${it.name}`;
+      try {
+        if (it.kind === "map") {
+          const info = await mapInfo(it);
+          if (!info.std) { skipped++; it.on = false; }
+          else {
+            const blob = await zipFiles(it.files, () => cancel);
+            if (!blob) break;
+            if (await saveMap({ name: `${it.name}.osz`, blob, cover: info.cover })) { maps++; it.have = true; it.on = false; }
+            else { failed++; if (failed >= 3 && !maps) break; }
+          }
+        } else {
+          const blob = await zipFiles(it.files, () => cancel);
+          if (!blob) break;
+          const rec = { name: it.name, blob };
+          if (await saveSkin(rec)) { skins++; it.have = true; it.on = false; skinRecords = skinRecords.filter((r) => r.name !== it.name).concat(rec); }
+          else failed++;
+        }
+      } catch (err) { console.error(err); failed++; }
+      prog.value++;
+      if (maps && maps % 25 === 0) refreshMapList();
+    }
+    busy = false;
+    prog.hidden = true;
+    $("#impPick").disabled = false;
+    $("#impClose").textContent = "Close";
+    await refreshMapList();
+    renderSkinList();
+    renderList("map"); renderList("skin");
+    await summary();
+    const bits = [];
+    if (maps) bits.push(`${maps} beatmap${maps === 1 ? "" : "s"}`);
+    if (skins) bits.push(`${skins} skin${skins === 1 ? "" : "s"}`);
+    let msg = bits.length ? `Imported ${bits.join(" and ")}.` : "Nothing was imported.";
+    if (skipped) msg += ` ${skipped} skipped (not osu!standard).`;
+    if (failed) msg += ` ${failed} couldn't be saved (browser storage may be full).`;
+    if (cancel) msg += " Stopped early.";
+    if (skins) msg += " Pick a skin under Settings → Skin.";
+    $("#impScan").textContent = msg;
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("err", !!failed && !maps && !skins);
+  };
+  const close = () => {
+    if (busy) { cancel = true; return; }
+    el.hidden = true;
+  };
+  $("#impClose").onclick = close;
+  addEventListener("keydown", (e) => {
+    if (el.hidden || e.code !== "Escape") return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    close();
+  }, true);
+  const open = () => { closeSettings(); el.hidden = false; summary(); $("#impPick").focus({ preventScroll: true }); };
+  $("#impOpen").onclick = open;
+  $("#impSkins").onclick = open;
+  return { open };
+})();
+
 // ---- first-visit tutorial: walks through opening the menu, Settings (keys, skin, the rest) and adding beatmaps,
 // showing each on the real screen. It runs once (remembered in this browser); Settings > Show tutorial replays it. ----
 const tour = (() => {
@@ -3094,13 +3392,13 @@ const tour = (() => {
       body: "<p>Click a key button, then press the key you want to tap with. Tick <b>Mouse button</b> to click notes too.</p>",
       enter: async () => { openSettings(); $("#k0").scrollIntoView({ block: "center" }); await wait(150); } },
     { title: "Change your skin", target: () => settingsRow("#skin"),
-      body: "<p><b>Add .osk</b> imports a skin file (from osu! or a skin site). Pick it from the list to use it. The menu, notes and colours all follow it.</p>",
+      body: "<p><b>Add .osk</b> imports a skin file, or <b>Import from osu!</b> brings over the skins already in your osu! folder. Pick one from the list to use it. The menu, notes and colours all follow it.</p>",
       enter: async () => { openSettings(); $("#skin").scrollIntoView({ block: "center" }); await wait(150); } },
     { title: "Everything else", target: () => $("#more"), clip: true,
       body: "<p>Music and effect volume, offset, cursor, mouse sensitivity, hit sounds and the main menu animations are all here.</p>",
       enter: async () => { openSettings(); $("#more").scrollIntoView({ block: "start" }); await wait(150); } },
     { title: "Add beatmaps", target: () => $("#open"),
-      body: "<p>In <b>Play → Solo</b>, use <b>Open .osz</b> to add a beatmap, or just drop .osz files anywhere on the page.</p><p>Get beatmaps from <b>osu.ppy.sh/beatmapsets</b>. They stay saved, so you only add each one once.</p>",
+      body: "<p>In <b>Play → Solo</b>, use <b>Open .osz</b> to add a beatmap, or just drop .osz files anywhere on the page.</p><p>Already play osu!? <b>Import from osu!</b> copies your beatmaps and skins straight from your osu! folder. They stay saved, so you only add each one once.</p>",
       enter: async () => { closeSettings(); showScreen("select"); await wait(100); } },
     { title: "Pick and play", target: () => $("#play"),
       body: "<p>Choose a map and difficulty, add mods if you like, then press <b>Play</b> or <kbd>Enter</kbd>. <kbd>Esc</kbd> pauses in a round and goes back from menus.</p>",
