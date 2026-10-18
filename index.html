@@ -128,6 +128,29 @@
     background: rgba(14, 10, 28, .72); border: 1px solid rgba(255, 255, 255, .14); backdrop-filter: blur(6px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, .35); animation: hint-breathe 2.4s ease-in-out infinite;
     font-size: 14px; transition: opacity .3s; pointer-events: none; }
+  /* first-visit tutorial: a spotlight on the real control, with a card explaining it */
+  #tour { position: fixed; inset: 0; z-index: 1000; pointer-events: auto; }
+  #tour[hidden] { display: none; }
+  #tour .hole { position: fixed; border-radius: 18px; pointer-events: none; box-shadow: 0 0 0 200vmax rgba(6, 4, 16, .72), 0 0 0 3px rgba(var(--logo-rgb, 255, 102, 170), .95), 0 0 28px 6px rgba(var(--logo-rgb, 255, 102, 170), .55);
+    transition: left .35s cubic-bezier(.3, .9, .3, 1), top .35s cubic-bezier(.3, .9, .3, 1), width .35s cubic-bezier(.3, .9, .3, 1), height .35s cubic-bezier(.3, .9, .3, 1), border-radius .35s; }
+  #tour .hole.none { box-shadow: 0 0 0 200vmax rgba(6, 4, 16, .72); }
+  #tour .tcard { position: fixed; width: min(360px, calc(100vw - 32px)); padding: 18px 20px 16px; border-radius: 16px; color: #f4f0ff;
+    background: rgba(22, 16, 42, .96); border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+    transition: left .35s cubic-bezier(.3, .9, .3, 1), top .35s cubic-bezier(.3, .9, .3, 1), opacity .2s; font-size: 14.5px; line-height: 1.5; }
+  #tour .tcard .step { font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--logo-rgb, 255, 102, 170)); filter: brightness(1.35); }
+  #tour .tcard h3 { margin: 4px 0 6px; font: 600 21px/1.2 "Fredoka", "Inter", system-ui, sans-serif; }
+  #tour .tcard p { margin: 0 0 6px; color: rgba(240, 234, 255, .88); }
+  #tour .tcard kbd { font: 600 12px "Inter", system-ui, sans-serif; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18); }
+  #tour .tfoot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  #tour .dots { display: flex; gap: 5px; margin-right: auto; }
+  #tour .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, .22); transition: background .2s, width .2s; }
+  #tour .dots i.on { width: 18px; border-radius: 4px; background: rgb(var(--logo-rgb, 255, 102, 170)); }
+  #tour .tfoot button { font: 600 13.5px "Inter", system-ui, sans-serif; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, .18); background: rgba(255, 255, 255, .06); color: #fff; }
+  #tour .tfoot button.next { background: rgb(var(--logo-rgb, 255, 102, 170)); border-color: transparent; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+  #tour .tfoot button.skip { border: none; background: none; color: rgba(240, 234, 255, .6); padding: 7px 6px; }
+  #tour .tfoot button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  body.calm #tour .hole, body.calm #tour .tcard { transition: none; }
   /* booting: the saved skin and settings are still loading; the logo stays hidden (and its intro waits) until they are in */
   #home .logo-spot { transition: left .55s cubic-bezier(.3, .9, .3, 1), opacity .35s ease; }
   #home .hint { transition: opacity .35s ease; }
@@ -354,11 +377,17 @@
       </div>
       <div id="more"></div>
       <small class="muted">Click a key button, then press the key to bind it (Esc cancels). Esc pauses, R restarts. Pausing also happens when the window loses focus. Esc and R cannot be bound to play keys.</small>
-      <div><button id="closeSettings">Back</button></div>
+      <div><button id="closeSettings">Back</button> <button id="tourBtn">Show tutorial</button></div>
     </div>
   </section>
 </div>
 
+<div id="tour" hidden role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+  <div class="hole"></div>
+  <div class="tcard"><div class="step" id="tourStep"></div><h3 id="tourTitle"></h3><div id="tourBody"></div>
+    <div class="tfoot"><div class="dots" id="tourDots"></div><button class="skip" id="tourSkip">Skip</button><button id="tourBack">Back</button><button class="next" id="tourNext">Next</button></div>
+  </div>
+</div>
 <div id="status">Loading core…</div>
 <div id="videoNote"></div>
 
@@ -3041,6 +3070,130 @@ window.osuDemo = {
   window.homeMenu = { audio, get song() { return song; }, playIndex };
 }
 
+// ---- first-visit tutorial: walks through opening the menu, Settings (keys, skin, the rest) and adding beatmaps,
+// showing each on the real screen. It runs once (remembered in this browser); Settings > Show tutorial replays it. ----
+const tour = (() => {
+  const el = $("#tour"), hole = el.querySelector(".hole"), card = el.querySelector(".tcard");
+  const KEY = "osuweb.tourDone";
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const expandMenu = () => {
+    if (document.body.dataset.screen !== "menu") showScreen("menu");
+    if (document.body.dataset.expanded !== "1") $("#cookie").click();
+  };
+  const settingsRow = (sel) => $(sel)?.closest(".settings-row");
+  const steps = [
+    { title: "Welcome to osu! web", body: "<p>A quick look around: how to get to <b>Settings</b>, change your <b>skin</b>, and add <b>beatmaps</b>.</p><p>It takes about 30 seconds. Everything you add is saved in this browser.</p>",
+      enter: () => { closeSettings(); showScreen("menu"); } },
+    { title: "The osu! circle", target: () => $("#home .logo-spot"), round: true,
+      body: "<p>Click the big circle to open the main menu. Its buttons are notes: click them, or press <kbd>1</kbd>–<kbd>4</kbd>.</p>",
+      enter: () => { closeSettings(); showScreen("menu"); } },
+    { title: "Settings", target: () => $("#settingsBtn"), round: true, keep: expandMenu,
+      body: "<p>This note opens <b>Settings</b>. You can also open them from song select and the pause menu.</p>",
+      enter: async () => { closeSettings(); expandMenu(); await wait(700); } },
+    { title: "Your keys", target: () => settingsRow("#k0"),
+      body: "<p>Click a key button, then press the key you want to tap with. Tick <b>Mouse button</b> to click notes too.</p>",
+      enter: async () => { openSettings(); $("#k0").scrollIntoView({ block: "center" }); await wait(150); } },
+    { title: "Change your skin", target: () => settingsRow("#skin"),
+      body: "<p><b>Add .osk</b> imports a skin file (from osu! or a skin site). Pick it from the list to use it. The menu, notes and colours all follow it.</p>",
+      enter: async () => { openSettings(); $("#skin").scrollIntoView({ block: "center" }); await wait(150); } },
+    { title: "Everything else", target: () => $("#more"), clip: true,
+      body: "<p>Music and effect volume, offset, cursor, mouse sensitivity, hit sounds and the main menu animations are all here.</p>",
+      enter: async () => { openSettings(); $("#more").scrollIntoView({ block: "start" }); await wait(150); } },
+    { title: "Add beatmaps", target: () => $("#open"),
+      body: "<p>In <b>Play → Solo</b>, use <b>Open .osz</b> to add a beatmap, or just drop .osz files anywhere on the page.</p><p>Get beatmaps from <b>osu.ppy.sh/beatmapsets</b>. They stay saved, so you only add each one once.</p>",
+      enter: async () => { closeSettings(); showScreen("select"); await wait(100); } },
+    { title: "Pick and play", target: () => $("#play"),
+      body: "<p>Choose a map and difficulty, add mods if you like, then press <b>Play</b> or <kbd>Enter</kbd>. <kbd>Esc</kbd> pauses in a round and goes back from menus.</p>",
+      enter: async () => { closeSettings(); showScreen("select"); await wait(100); } },
+    { title: "You're all set", body: "<p>Have fun! You can see this again any time from <b>Settings → Show tutorial</b>.</p>",
+      enter: () => { closeSettings(); showScreen("menu"); } },
+  ];
+  let i = 0, on = false, raf = 0, busy = false;
+  const dots = $("#tourDots");
+  dots.innerHTML = steps.map(() => "<i></i>").join("");
+  const place = () => {
+    if (!on) return;
+    raf = requestAnimationFrame(place);
+    const st = steps[i];
+    if (st.keep && !busy) st.keep();
+    const t = st.target?.();
+    const r = t && !t.hidden ? t.getBoundingClientRect() : null;
+    const vw = innerWidth, vh = innerHeight, pad = 10;
+    let box = null;
+    if (r && r.width && r.height) {
+      let top = r.top - pad, bottom = r.bottom + pad;
+      if (st.clip) { top = Math.max(top, 8); bottom = Math.min(bottom, vh - 8); }
+      box = { left: r.left - pad, top, width: r.width + pad * 2, height: bottom - top };
+      if (st.round) { const d = Math.max(box.width, box.height); box = { left: r.left + r.width / 2 - d / 2, top: r.top + r.height / 2 - d / 2, width: d, height: d }; }
+    }
+    hole.classList.toggle("none", !box);
+    const b = box || { left: vw / 2, top: vh / 2, width: 0, height: 0 };
+    Object.assign(hole.style, { left: `${b.left}px`, top: `${b.top}px`, width: `${b.width}px`, height: `${b.height}px`, borderRadius: st.round ? "50%" : "18px" });
+    // the card: beside the spotlight where it fits (below, above, right, left), else centred
+    const cw = card.offsetWidth, ch = card.offsetHeight, m = 16;
+    let x, y;
+    if (!box) { x = (vw - cw) / 2; y = (vh - ch) / 2; }
+    else if (box.top + box.height + m + ch < vh - m) { x = box.left + box.width / 2 - cw / 2; y = box.top + box.height + m; }
+    else if (box.top - m - ch > m) { x = box.left + box.width / 2 - cw / 2; y = box.top - m - ch; }
+    else if (box.left + box.width + m + cw < vw - m) { x = box.left + box.width + m; y = box.top + box.height / 2 - ch / 2; }
+    else if (box.left - m - cw > m) { x = box.left - m - cw; y = box.top + box.height / 2 - ch / 2; }
+    else { x = (vw - cw) / 2; y = vh - ch - m; }
+    // only moved when the spot really moved (not for a beat's pulse or a note's wobble)
+    const nx = Math.round(Math.max(m, Math.min(vw - cw - m, x))), ny = Math.round(Math.max(m, Math.min(vh - ch - m, y)));
+    if (Math.abs(nx - (card._x ?? -1e4)) > 3 || Math.abs(ny - (card._y ?? -1e4)) > 3) {
+      card._x = nx; card._y = ny;
+      card.style.left = `${nx}px`; card.style.top = `${ny}px`;
+    }
+  };
+  const show = async (n) => {
+    if (busy) return;
+    busy = true;
+    i = Math.max(0, Math.min(steps.length - 1, n));
+    const st = steps[i];
+    card.style.opacity = "0";
+    try { await st.enter?.(); } catch (e) { console.error(e); }
+    $("#tourStep").textContent = i === 0 || i === steps.length - 1 ? "Tutorial" : `Step ${i} of ${steps.length - 2}`;
+    $("#tourTitle").textContent = st.title;
+    $("#tourBody").innerHTML = st.body;
+    [...dots.children].forEach((d, k) => d.classList.toggle("on", k === i));
+    $("#tourBack").hidden = i === 0;
+    $("#tourSkip").hidden = i === steps.length - 1;
+    $("#tourNext").textContent = i === 0 ? "Show me" : i === steps.length - 1 ? "Let's play" : "Next";
+    card.style.opacity = "1";
+    busy = false;
+    $("#tourNext").focus({ preventScroll: true });
+  };
+  const end = () => {
+    on = false;
+    cancelAnimationFrame(raf);
+    el.hidden = true;
+    try { localStorage.setItem(KEY, "1"); } catch (_) { /* storage blocked: it may show again next time */ }
+    closeSettings();
+    showScreen("menu");
+  };
+  $("#tourNext").onclick = () => (i === steps.length - 1 ? end() : show(i + 1));
+  $("#tourBack").onclick = () => show(i - 1);
+  $("#tourSkip").onclick = end;
+  // the tour owns the keyboard while it is open: Enter / → next, ← back, Esc skips
+  addEventListener("keydown", (e) => {
+    if (!on) return;
+    e.stopImmediatePropagation();
+    if (e.code === "Escape") { e.preventDefault(); end(); }
+    else if (e.code === "ArrowRight" || ((e.code === "Enter" || e.code === "NumpadEnter") && !e.target.closest?.("button"))) { e.preventDefault(); $("#tourNext").click(); }
+    else if (e.code === "ArrowLeft") { e.preventDefault(); if (i > 0) show(i - 1); }
+  }, true);
+  const start = () => {
+    if (on) return;
+    on = true;
+    el.hidden = false;
+    show(0);
+    raf = requestAnimationFrame(place);
+  };
+  $("#tourBtn").onclick = () => { closeSettings(); start(); };
+  const seen = () => { try { return localStorage.getItem(KEY) === "1"; } catch (_) { return true; } };
+  return { start, startIfNew: () => { if (!seen()) start(); } };
+})();
+
 // ---- start-up: the saved skin and beatmap list ----
 installAimAssistCode(() => playing && !finished);
 installAimbotCode(() => playing && !finished);
@@ -3059,6 +3212,8 @@ try {
 finally {
   // two frames so the logo is drawn in the skin before it shows, then its intro plays
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("booting")));
+  // a first visit gets the tutorial, once the logo's intro has played
+  setTimeout(() => tour.startIfNew(), 1300);
 }
 </script>
 </body>
