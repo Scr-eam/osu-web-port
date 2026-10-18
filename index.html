@@ -244,6 +244,21 @@
   /* Settings */
   .settings-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; width: 100%; }
   .settings-row > span { color: var(--muted); min-width: 6em; }
+  /* the skin picker: a fixed-width box; a long skin name glides left and right so all of it can be read.
+     The real <select> sits invisibly on top, so clicking still opens the normal list. */
+  .skinpick { position: relative; flex: 0 1 300px; min-width: 160px; height: 38px; border-radius: 8px; border: 1px solid var(--line);
+    background: rgba(0, 0, 0, .28); overflow: hidden; }
+  .skinpick:hover { border-color: rgba(255, 255, 255, .3); }
+  .skinpick:focus-within { outline: 2px solid #fff; outline-offset: 1px; }
+  .skinpick::after { content: ""; position: absolute; right: 12px; top: 50%; width: 7px; height: 7px; margin-top: -6px; pointer-events: none;
+    border-right: 2px solid #cfc8e8; border-bottom: 2px solid #cfc8e8; transform: rotate(45deg); }
+  .skinpick .skinname { position: absolute; inset: 0 32px 0 12px; display: flex; align-items: center; overflow: hidden; white-space: nowrap; pointer-events: none; }
+  .skinpick .skinname.long { -webkit-mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 14px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 14px), transparent); padding-left: 2px; }
+  #skinName { display: inline-block; color: #fff; font-size: 14px; }
+  #skinName.scroll { animation: skin-marquee var(--dur, 6s) ease-in-out infinite alternate; }
+  @keyframes skin-marquee { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--shift, 0)); } }
+  .skinpick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
   #settings .panel { width: min(92vw, 900px); align-items: stretch; text-align: left; }
   /* import from an osu! install: pick the folder, choose what to bring over */
   #ui > #importer { z-index: 20; }
@@ -395,9 +410,10 @@
   <section id="importer" class="overlay" aria-label="Import from osu!" hidden>
     <div class="panel">
       <h2>Import from osu!</h2>
-      <p>Bring over the beatmaps and skins you already have in <b>osu!</b> (stable), so you don't have to download them again. Pick your osu! folder; nothing is uploaded anywhere, it's copied into this browser.</p>
-      <p>On Windows it's usually <code>%LOCALAPPDATA%\osu!</code>: paste that into the folder box of the picker. You can also pick just the <b>Songs</b> or <b>Skins</b> folder inside it, which is quicker.</p>
-      <div class="pickrow"><button id="impPick" class="primary">Choose osu! folder</button><span class="muted" id="impScan"></span></div>
+      <p>Bring over the beatmaps and skins you already have in <b>osu!</b> (stable), so you don't have to download them again.</p>
+      <p>Pick the <b>Songs</b> and <b>Skins</b> folders inside your osu! folder. Only the folder you pick is read, never the rest of osu! (so not your account or settings), and nothing is uploaded anywhere: it's copied into this browser.</p>
+      <p>On Windows they're usually at <code>%LOCALAPPDATA%\osu!\Songs</code> and <code>%LOCALAPPDATA%\osu!\Skins</code>: paste that into the folder box of the picker.</p>
+      <div class="pickrow"><button id="impPickSongs" class="primary">Choose Songs folder</button><button id="impPickSkins" class="primary">Choose Skins folder</button><span class="muted" id="impScan"></span></div>
       <div class="inote" id="impLazer" hidden></div>
       <div class="lists" id="impLists" hidden>
         <div class="group">
@@ -430,10 +446,10 @@
       </div>
       <div class="settings-row">
         <span>Skin</span>
-        <select id="skin" aria-label="Skin"></select>
+        <div class="skinpick"><span class="skinname"><span id="skinName">Default</span></span><select id="skin" aria-label="Skin"></select></div>
+        <button id="delSkin" hidden>Remove</button>
         <button id="addSkin">Add .osk</button>
         <button id="impSkins">Import from osu!</button>
-        <button id="delSkin" hidden>Remove</button>
       </div>
       <div id="more"></div>
       <small class="muted">Click a key button, then press the key to bind it (Esc cancels). Esc pauses, R restarts. Pausing also happens when the window loses focus. Esc and R cannot be bound to play keys.</small>
@@ -604,6 +620,7 @@ function showScreen(name) {
 }
 function openSettings() {
   $("#settings").hidden = false;
+  syncSkinName();   // measured now that the panel is visible
   $("#settingsBtn").setAttribute("aria-expanded", "true");
 }
 function closeSettings() {
@@ -1721,7 +1738,23 @@ function renderSkinList() {
   $("#skin").replaceChildren(new Option("Default", ""), ...skinRecords.map((r) => new Option(r.name, r.name)));
   $("#skin").value = skinRecords.some((r) => r.name === S.skin) ? S.skin : "";
   $("#delSkin").hidden = !$("#skin").value;
+  syncSkinName();
 }
+// Shows the chosen skin's name in the picker; a name too long for the box scrolls across, slowly, to its end and back.
+function syncSkinName() {
+  const sel = $("#skin"), name = $("#skinName"), box = name.parentElement;
+  name.textContent = sel.selectedOptions[0]?.textContent || "Default";
+  name.classList.remove("scroll");
+  const over = name.scrollWidth - box.clientWidth;
+  box.classList.toggle("long", over > 0);
+  if (over > 0 && box.clientWidth) {
+    name.style.setProperty("--shift", `${-over - 4}px`);
+    name.style.setProperty("--dur", `${Math.max(3, over / 28 + 2).toFixed(1)}s`);
+    void name.offsetWidth;   // restart the glide from the start
+    name.classList.add("scroll");
+  }
+}
+addEventListener("resize", () => { if (!$("#settings").hidden) syncSkinName(); });
 // The skin the round draws with: the beatmap's own files when it has any, else the chosen skin, else the default look.
 function activeSkin() {
   const base = skin || (S.defaultLook === "argon" ? argonSkin : null);
@@ -1773,7 +1806,7 @@ async function selectSkin(name) {
   applySkin();
   renderSkinList();
 }
-$("#skin").onchange = (e) => selectSkin(e.target.value);
+$("#skin").onchange = (e) => { syncSkinName(); selectSkin(e.target.value); };
 $("#addSkin").onclick = () => $("#sf").click();
 $("#sf").onchange = async (e) => {
   const f = e.target.files[0];
@@ -3259,7 +3292,10 @@ const osuImport = (() => {
   $("#impMapFilter").oninput = () => renderList("map");
   $("#impSkinFilter").oninput = () => renderList("skin");
 
-  $("#impPick").onclick = () => $("#osuDir").click();
+  // Songs and Skins are picked separately, so only those folders are ever read; each pick fills its own list
+  let pickKind = "songs";
+  $("#impPickSongs").onclick = () => { pickKind = "songs"; $("#osuDir").click(); };
+  $("#impPickSkins").onclick = () => { pickKind = "skins"; $("#osuDir").click(); };
   $("#osuDir").onchange = async (e) => {
     const list = [...e.target.files];
     e.target.value = "";
@@ -3267,15 +3303,19 @@ const osuImport = (() => {
     $("#impScan").textContent = `Looking through ${list.length.toLocaleString()} files…`;
     await new Promise((r) => setTimeout(r, 30));
     const res = scan(list);
-    const haveMaps = new Set((await listMaps()).map((r) => r.name.replace(/\.osz$/i, "").toLowerCase()));
-    const haveSkins = new Set(skinRecords.map((r) => r.name.toLowerCase()));
-    found = {
-      maps: res.maps.map((m) => ({ ...m, have: haveMaps.has(m.name.toLowerCase()), on: !haveMaps.has(m.name.toLowerCase()) })),
-      skins: res.skins.map((s) => ({ ...s, have: haveSkins.has(s.name.toLowerCase()), on: false })),
-    };
-    $("#impLazer").hidden = !(res.lazer && !found.maps.length && !found.skins.length);
+    if (pickKind === "songs") {
+      const haveMaps = new Set((await listMaps()).map((r) => r.name.replace(/\.osz$/i, "").toLowerCase()));
+      found.maps = res.maps.map((m) => ({ ...m, have: haveMaps.has(m.name.toLowerCase()), on: !haveMaps.has(m.name.toLowerCase()) }));
+    } else {
+      const haveSkins = new Set(skinRecords.map((r) => r.name.toLowerCase()));
+      found.skins = res.skins.map((s) => ({ ...s, have: haveSkins.has(s.name.toLowerCase()), on: !haveSkins.has(s.name.toLowerCase()) }));
+    }
+    const got = pickKind === "songs" ? res.maps.length : res.skins.length;
+    $("#impLazer").hidden = !(res.lazer && !got);
     $("#impLazer").textContent = "That looks like an osu!lazer folder. Lazer keeps its files in a database that a web page can't read, so nothing can be imported from it. Use Export inside lazer instead (see below), or pick an osu!stable folder.";
-    $("#impScan").textContent = `Found ${found.maps.length} beatmap${found.maps.length === 1 ? "" : "s"} and ${found.skins.length} skin${found.skins.length === 1 ? "" : "s"}.`;
+    $("#impScan").textContent = pickKind === "songs"
+      ? (got ? `Found ${got} beatmap${got === 1 ? "" : "s"}.` : "No beatmaps in that folder. Pick the Songs folder inside osu!.")
+      : (got ? `Found ${got} skin${got === 1 ? "" : "s"}.` : "No skins in that folder. Pick the Skins folder inside osu!.");
     $("#impLists").hidden = !(found.maps.length || found.skins.length);
     $("#impGo").hidden = $("#impLists").hidden;
     renderList("map"); renderList("skin"); summary();
@@ -3303,7 +3343,7 @@ const osuImport = (() => {
     if (!sel.length) return;
     busy = true; cancel = false;
     $("#impGo").disabled = true;
-    $("#impPick").disabled = true;
+    $("#impPickSongs").disabled = $("#impPickSkins").disabled = true;
     $("#impClose").textContent = "Stop";
     const prog = $("#impProg");
     prog.hidden = false; prog.max = sel.length; prog.value = 0;
@@ -3334,7 +3374,7 @@ const osuImport = (() => {
     }
     busy = false;
     prog.hidden = true;
-    $("#impPick").disabled = false;
+    $("#impPickSongs").disabled = $("#impPickSkins").disabled = false;
     $("#impClose").textContent = "Close";
     await refreshMapList();
     renderSkinList();
@@ -3362,9 +3402,9 @@ const osuImport = (() => {
     e.stopImmediatePropagation(); e.preventDefault();
     close();
   }, true);
-  const open = () => { closeSettings(); el.hidden = false; summary(); $("#impPick").focus({ preventScroll: true }); };
-  $("#impOpen").onclick = open;
-  $("#impSkins").onclick = open;
+  const open = (first) => { closeSettings(); el.hidden = false; summary(); $(first).focus({ preventScroll: true }); };
+  $("#impOpen").onclick = () => open("#impPickSongs");
+  $("#impSkins").onclick = () => open("#impPickSkins");
   return { open };
 })();
 
@@ -3392,13 +3432,13 @@ const tour = (() => {
       body: "<p>Click a key button, then press the key you want to tap with. Tick <b>Mouse button</b> to click notes too.</p>",
       enter: async () => { openSettings(); $("#k0").scrollIntoView({ block: "center" }); await wait(150); } },
     { title: "Change your skin", target: () => settingsRow("#skin"),
-      body: "<p><b>Add .osk</b> imports a skin file, or <b>Import from osu!</b> brings over the skins already in your osu! folder. Pick one from the list to use it. The menu, notes and colours all follow it.</p>",
+      body: "<p><b>Add .osk</b> imports a skin file, or <b>Import from osu!</b> brings over the skins in your osu! Skins folder. Pick one from the list to use it. The menu, notes and colours all follow it.</p>",
       enter: async () => { openSettings(); $("#skin").scrollIntoView({ block: "center" }); await wait(150); } },
     { title: "Everything else", target: () => $("#more"), clip: true,
       body: "<p>Music and effect volume, offset, cursor, mouse sensitivity, hit sounds and the main menu animations are all here.</p>",
       enter: async () => { openSettings(); $("#more").scrollIntoView({ block: "start" }); await wait(150); } },
     { title: "Add beatmaps", target: () => $("#open"),
-      body: "<p>In <b>Play → Solo</b>, use <b>Open .osz</b> to add a beatmap, or just drop .osz files anywhere on the page.</p><p>Already play osu!? <b>Import from osu!</b> copies your beatmaps and skins straight from your osu! folder. They stay saved, so you only add each one once.</p>",
+      body: "<p>In <b>Play → Solo</b>, use <b>Open .osz</b> to add a beatmap, or just drop .osz files anywhere on the page.</p><p>Already play osu!? <b>Import from osu!</b> copies your beatmaps and skins straight from your osu! Songs and Skins folders. They stay saved, so you only add each one once.</p>",
       enter: async () => { closeSettings(); showScreen("select"); await wait(100); } },
     { title: "Pick and play", target: () => $("#play"),
       body: "<p>Choose a map and difficulty, add mods if you like, then press <b>Play</b> or <kbd>Enter</kbd>. <kbd>Esc</kbd> pauses in a round and goes back from menus.</p>",
