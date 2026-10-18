@@ -2,12 +2,12 @@
 
 # osu! web
 
-**osu!standard in your browser: solo, offline, no install.**
+**A browser port of osu!lazer: solo, offline, no install.**
 
 Bring your own beatmaps and skins, click the circles, chase the combo.
 
 ![made with Claude](https://img.shields.io/badge/100%25%20made%20with-Claude-d97757?style=for-the-badge)
-![mode](https://img.shields.io/badge/mode-osu!standard-ff66aa?style=for-the-badge)
+![based on](https://img.shields.io/badge/based%20on-osu!lazer-ff66aa?style=for-the-badge)
 ![runs in](https://img.shields.io/badge/runs%20in-the%20browser-7a4dff?style=for-the-badge)
 
 </div>
@@ -20,11 +20,15 @@ Bring your own beatmaps and skins, click the circles, chase the combo.
 
 ## ✨ Features
 
-**Gameplay**
-- Full **osu!standard**: circles, sliders (with ticks, repeats and snaking), spinners, combo, accuracy, health and grades
-- A judging core written in C++ and compiled to **WebAssembly**, so timing is exact and the same every time
+**Gameplay, ported from osu!lazer**
+- The game rules come straight from **lazer's own code** (2026.1005.0), rewritten in C++ and compiled to **WebAssembly**:
+  - **Scoring**: lazer's ScoreV2, plus its health and drain rules
+  - **Judging**: hit circles, slider heads, ticks, repeats and tails, and spinner rotation, using lazer's default hit order
+  - **Beatmaps**: lazer's .osu decoder, combo colours, stacking and slider paths
+- Circles, sliders (snaking in and out), spinners, combo, accuracy, health and grades
+- **Argon**, lazer's default skin, is the default look and sound
 - **Mods**: EZ, NF, HT, HR, SD, PF, DT, NC, HD, FL, MR and DC
-- **Hit sounds** for circles, slider ticks, slides and spins, with the default Argon samples built in. They still play on maps that mute them, if you like (setting).
+- **Hit sounds** for circles, slider ticks, slides and spins, following lazer's sample rules. They still play on maps that mute them, if you like (setting).
 - Beatmap videos and backgrounds, autoplay, pause / retry, and resume with a countdown
 
 **Your stuff**
@@ -85,7 +89,7 @@ skin inside lazer and add the file here instead.
 ## 🧩 How it's built
 
 ```
-core/   C++ osu!standard core: beatmap parsing, slider paths, judging, scoring  ->  osu_core.wasm
+core/   C++ port of lazer's osu! ruleset: beatmap decoding, slider paths, judging, ScoreV2 scoring, health  ->  osu_core.wasm
 web/    The game: rendering, audio, menus, skins, storage (plain ES modules, no build step)
 ```
 
@@ -104,7 +108,7 @@ To rebuild the core: `cd core && ./build.sh` (clang with the wasm32 target, or E
 
 ## ⚠️ Disclaimer
 
-This is an unofficial fan project, **not affiliated with or endorsed by ppy Pty Ltd**. *osu!* is a trademark of ppy
+This is an unofficial fan port of [osu!lazer](https://github.com/ppy/osu), **not affiliated with or endorsed by ppy Pty Ltd**. The game rules are ported from lazer's source, which ppy publishes under the MIT licence. *osu!* is a trademark of ppy
 Pty Ltd. The default sounds and other game resources come from
 [ppy/osu-resources](https://github.com/ppy/osu-resources) under its
 [CC BY-NC 4.0](https://github.com/ppy/osu-resources/blob/master/LICENCE.md) licence: credit to ppy, non-commercial
