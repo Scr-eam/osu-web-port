@@ -30,11 +30,11 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
     here = os.path.dirname(os.path.abspath(__file__))
-    web_dir = os.path.join(here, "web")
-    handler = functools.partial(NoCacheHandler, directory=web_dir)
+    handler = functools.partial(NoCacheHandler, directory=here)
     with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
-        print(f"Serving {web_dir} on http://localhost:{port} (no caching). Ctrl+C to stop.")
+        print(f"Serving {here} on http://localhost:{port} (no caching). Ctrl+C to stop.")
         httpd.serve_forever()
+
 
 if __name__ == "__main__":
     main()

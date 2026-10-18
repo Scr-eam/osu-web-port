@@ -38,6 +38,8 @@ export const SETTING_DEFS = [
   { section: "Audio", key: "volMusic", type: "range", def: 1, min: 0, max: 1, step: 0.01, label: "Music volume" },
   { section: "Audio", key: "volFx", type: "range", def: 1, min: 0, max: 1, step: 0.01, label: "Effect volume" },
   { section: "Audio", key: "hitsounds", type: "bool", def: true, label: "Hit sounds" },
+  { section: "Audio", key: "unmuteMaps", type: "bool", def: true, label: "Hit sounds on muted maps",
+    tip: "Some maps set their hit sound volume to 0 on purpose. On plays them at full volume anyway; off keeps them silent, as osu! does." },
 ];
 
 // Copies stored values onto s. Anything that does not match its type or range keeps the default.
