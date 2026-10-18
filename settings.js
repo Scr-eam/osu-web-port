@@ -33,6 +33,8 @@ export const SETTING_DEFS = [
   { section: "Skin", key: "beatmapColours", type: "bool", def: true, label: "Beatmap combo colours",
     tip: "Uses the combo colours a beatmap sets. Off uses the skin's or the default colours." },
   // Audio
+  { section: "Skin", key: "menuFx", type: "select", def: "on", options: [["on", "On"], ["system", "Follow system"], ["off", "Off"]],
+    label: "Main menu animations", tip: "Particles, light rays and the beat pulse on the main menu. Follow system turns them off when the computer is set to reduce motion (Windows: Animation effects)." },
   { section: "Audio", key: "offset", type: "range", def: 0, min: -500, max: 500, step: 1,
     label: "Audio offset (ms)", tip: "Shifts the timing of the whole round. Positive values make you judge later." },
   { section: "Audio", key: "volMusic", type: "range", def: 1, min: 0, max: 1, step: 0.01, label: "Music volume" },
