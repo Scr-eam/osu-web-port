@@ -736,12 +736,19 @@ export function createHud({ makeCanvas = defaultCanvas } = {}) {
       const maxW = Math.max(1, ...hud.errors.windows);
       for (const e of hud.errors.list) if (e.rel === undefined) e.rel = clamp(e.offset / maxW / 2, -0.5, 0.5);
     }
-    const w = env.w;
+    let w = env.w;
     const H = env.h;
-    const u = Math.min(w / 1024, H / 768);
     const sk = skin || NO_SKIN;
     // A loaded skin takes the legacy look for the combo counter and health bar, as lazer's legacy HUD does.
     const skinOn = !!skin && (skin.active ? skin.active() : true);
+    // Legacy skins are drawn for a 16:9 screen: elements sit by the top-left (the health bar, whose
+    // background is often a whole-screen picture with panels for the score and a frame round the playfield)
+    // and by the right edge (score, accuracy, keys). On a wider window the HUD is laid out in a centred 16:9
+    // area, so those line up with each other and with the centred playfield as the skin intends.
+    const wide = skinOn && w / H > 16 / 9 + 0.01;
+    const hudX = wide ? (w - (H * 16) / 9) / 2 : 0;
+    if (wide) w = (H * 16) / 9;
+    const u = Math.min(w / 1024, H / 768);
     const hp = clamp(hud.health ?? 0, 0, 1);
     const digitsOf = (family, extra = []) => [...DIGITS, ...extra].every((k) => sk.sprite(`${family}-${k}`));
     const legacy = {
@@ -754,6 +761,7 @@ export function createHud({ makeCanvas = defaultCanvas } = {}) {
     const stacked = skinOn || legacy.score || legacy.health;  // a skin takes the legacy corner
 
     ctx.save();
+    if (hudX) ctx.translate(hudX, 0);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.globalAlpha = 1;
