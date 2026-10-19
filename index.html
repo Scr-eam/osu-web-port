@@ -1123,7 +1123,10 @@ let lockLostPauseAt = -Infinity;    // when a lost lock paused the round (a late
 document.addEventListener("pointerlockchange", () => {
   rebase = true;
   const locked = document.pointerLockElement === glCanvas;
-  if (!locked) rawCounts = false;
+  
+  // Resets rawCounts when lock is lost
+  if (!locked) rawCounts = false; 
+
   if (!locked && lockHeld && playing && !paused && !finished) {
     pauseRound();
     lockLostPauseAt = performance.now();
@@ -1132,11 +1135,11 @@ document.addEventListener("pointerlockchange", () => {
 });
 glCanvas.addEventListener("pointerdown", (e) => {
   if ((e.button === 0 || e.button === 2) && clickPrompt()) return;
-  // A lock the browser refused (it does so for a moment after Escape released one) is asked for again on a click.
+  
+  // This calls your lockPointer() function when a round is running and the pointer isn't locked yet
   if (rawCursor() && !document.pointerLockElement) lockPointer();
+  
   if (!S.relative && !rawCursor()) cursor = toPlayfield(e);
-  // Mouse buttons come through mousedown, which fires for each button even while another is held (a
-  // second button on the same pointer gives no pointerdown). A touch is the left button.
   if (e.pointerType !== "mouse") mousePress(0, e.timeStamp);
 });
 glCanvas.addEventListener("mousedown", (e) => {
@@ -2023,9 +2026,25 @@ async function startPlay() {
 // Locks the pointer to the playfield while a round runs in high precision mode. The browser only
 // allows this after a click or key press that counts as a user gesture (Play, R and Resume do; Escape
 // usually does not), so a refused request just leaves the movement working without the lock.
-function lockPointer() {
-  if (!S.relative) return;
-  requestLock(true);
+async function lockPointer() {
+  if (!S.relative || !glCanvas || document.pointerLockElement === glCanvas) return;
+
+  try {
+    // Attempt pointer lock with raw unadjusted mouse counts (disables OS acceleration)
+    await glCanvas.requestPointerLock({ unadjustedMovement: true });
+    
+    // If the browser successfully accepts it, enable rawCounts
+    rawCounts = true;
+  } catch (error) {
+    // Fallback for browsers/environments that don't support { unadjustedMovement: true }
+    try {
+      await glCanvas.requestPointerLock();
+      rawCounts = false; // Standard movement fallback
+    } catch (fallbackError) {
+      console.error("Pointer lock was rejected or failed:", fallbackError);
+      rawCounts = false;
+    }
+  }
 }
 // Asks for the lock. Unadjusted movement is asked for first; a browser or platform that refuses it gets the
 // plain lock instead. A refused lock just leaves the movement working over the page.
