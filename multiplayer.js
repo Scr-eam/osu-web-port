@@ -62,9 +62,11 @@ class Signal {
           resolve();
         } else if (m.type === "ID-TAKEN") {
           clearTimeout(timer);
+          mpLog(`server: says ID-TAKEN for ${short(this.id)}`);
           if (!opened) { opened = true; reject(Object.assign(new Error("id-taken"), { taken: true })); }
         } else if (m.type === "ERROR") {
           clearTimeout(timer);
+          mpLog(`server: ERROR ${JSON.stringify(m.payload || {})}`);
           fail(m.payload?.msg || "The multiplayer server refused the connection.");
         } else {
           if (m.type !== "CANDIDATE") mpLog(`server: got ${m.type}${m.src ? ` from ${short(m.src)}` : ""}${m.type === "ERROR" || m.type === "EXPIRE" ? ` ${JSON.stringify(m.payload || {})}` : ""}`);
@@ -72,7 +74,7 @@ class Signal {
         }
       };
       ws.onerror = () => { clearTimeout(timer); fail("Couldn't reach the multiplayer server."); };
-      ws.onclose = (e) => { clearInterval(this.hb); if (opened) { mpLog(`server: connection closed (code ${e.code})`); this.onclose?.(); } else { clearTimeout(timer); fail(`Couldn't reach the multiplayer server (code ${e.code}).`); } };
+      ws.onclose = (e) => { clearInterval(this.hb); if (opened) { mpLog(`server: connection closed ${this.closing ? "by this page" : `BY THE SERVER (code ${e.code}${e.reason ? `, ${e.reason}` : ""})`}`); this.onclose?.(); } else { clearTimeout(timer); fail(`Couldn't reach the multiplayer server (code ${e.code}).`); } };
     });
   }
   raw(m) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(m)); }
@@ -80,7 +82,7 @@ class Signal {
     if (type !== "CANDIDATE") mpLog(`server: sending ${type} to ${short(dst)}${this.ws?.readyState === 1 ? "" : " (NOT CONNECTED)"}`);
     this.raw({ type, dst, payload });
   }
-  close() { clearInterval(this.hb); this.onclose = null; try { this.ws?.close(); } catch (_) {} }
+  close() { clearInterval(this.hb); this.onclose = null; this.closing = true; try { this.ws?.close(); } catch (_) {} }
 }
 
 // ---- one WebRTC connection to another player, with one ordered, reliable data channel ----
@@ -113,7 +115,7 @@ class Link {
     };
     pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") mpLog(`finished finding routes: ${this.diag.mine.host} local, ${this.diag.mine.srflx} internet, ${this.diag.mine.relay} relay`); };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") this.close();
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") this.close(`connection ${pc.connectionState}`);
     };
     pc.ondatachannel = (e) => this.useChannel(e.channel);
     if (initiator) {
@@ -122,7 +124,7 @@ class Link {
         try {
           await pc.setLocalDescription(await pc.createOffer());
           signal.send("OFFER", remote, { sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription, type: "data", connectionId: this.cid, serialization: "raw", reliable: true });
-        } catch (err) { this.close(); }
+        } catch (err) { this.close(`couldn't make an offer: ${err.message}`); }
       })();
     }
   }
@@ -140,7 +142,7 @@ class Link {
         this.h.message?.(this, m);
       } else this.h.binary?.(this, e.data);
     };
-    dc.onclose = () => this.close();
+    dc.onclose = () => this.close("data channel closed");
   }
   async onSignal(m) {
     const pc = this.pc;
@@ -176,9 +178,10 @@ class Link {
     if (!this.ready) throw new Error("closed");
     this.dc.send(buf);
   }
-  close() {
+  close(why = "") {
     if (this.closed) return;
     this.closed = true;
+    mpLog(`direct link to ${short(this.remote)} closed${why ? ` (${why})` : ""}`);
     try { this.dc?.close(); } catch (_) {}
     try { this.pc.close(); } catch (_) {}
     this.h.close?.(this);
@@ -205,7 +208,7 @@ export function createMultiplayer(api) {
   const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const fmt = (n) => Math.round(n || 0).toLocaleString();
   const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
-  const status = (msg, err = false) => { const el = $("#mpStatus"); el.textContent = msg || ""; el.classList.toggle("err", !!err); };
+  const status = (msg, err = false) => { const el = $("#mpStatus"); el.textContent = msg || ""; el.classList.toggle("err", !!err); if (msg) mpLog(`${err ? "ERROR shown" : "status"}: ${msg}`); };
   const haveMap = (n) => !!n && api.maps().some((r) => r.name === n);
 
   // ---------------------------------------------------------------- host side ----
@@ -405,7 +408,8 @@ export function createMultiplayer(api) {
     room = null;
     inRound = false;
     incoming = null;
-    for (const l of r.links.values()) { l.h.close = null; l.close(); }
+    mpLog("leaving the room");
+    for (const l of r.links.values()) { l.h.close = null; l.close("left the room"); }
     r.signal.close();
     log.length = 0;
     history.replaceState(null, "", location.pathname);
