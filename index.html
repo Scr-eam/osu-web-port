@@ -161,6 +161,95 @@
   #bootVeil i { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .12); border-top-color: rgba(255, 255, 255, .7);
     animation: veil-spin .8s linear infinite; opacity: 0; animation-delay: .4s; animation-fill-mode: both; }
   @keyframes veil-spin { from { opacity: 1; transform: rotate(0); } to { opacity: 1; transform: rotate(360deg); } }
+  /* practice: rewind / fast forward while a round plays */
+  #seekHud { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px;
+    padding: 10px 22px; border-radius: 999px; pointer-events: none; color: var(--accent-ink, #fff);
+    background: color-mix(in srgb, var(--accent-a), transparent 12%); box-shadow: 0 10px 30px rgba(0, 0, 0, .45), 0 0 30px color-mix(in srgb, var(--accent-a), transparent 50%);
+    font: 700 20px/1 "Fredoka", "Inter", system-ui, sans-serif; letter-spacing: .03em; text-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+  #seekHud svg { width: 26px; height: 26px; }
+  #seekHud small { font: 600 14px "Inter", system-ui, sans-serif; opacity: .85; }
+  #seekHud .bar { width: 120px; height: 5px; border-radius: 3px; background: rgba(0, 0, 0, .25); overflow: hidden; }
+  #seekHud .bar i { display: block; height: 100%; background: currentColor; }
+  /* rewinding: soft VHS lines and darker, tinted edges; the notes in the middle keep their colours */
+  body.rewinding #stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(ellipse at center, transparent 55%, color-mix(in srgb, var(--accent-a), #000 75%) 130%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 4px);
+    animation: vhs .25s steps(3) infinite; }
+  @keyframes vhs { to { transform: translateY(5px); } }
+  body.ffwd #stage { filter: saturate(1.15); }
+  body.calm.rewinding #stage::after { animation: none; }
+  .practice-note { margin-top: 6px; color: var(--accent-b); font-weight: 600; }
+  /* multiplayer: the lobby (song select's look), the in-game scoreboard, the room's results */
+  #mp { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; gap: 0; text-align: left; }
+  .mp-body { flex: 1; min-height: 0; overflow-y: auto; padding: 22px; display: flex; flex-direction: column; gap: 12px; }
+  .mp-join { flex: 1; display: grid; place-items: center; }
+  .mp-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 26px; border-radius: 18px;
+    background: rgba(14, 10, 28, .78); border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 18px 50px rgba(0, 0, 0, .35); }
+  .mp-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #b9b1d8; font-weight: 600; }
+  .mp-card input, .mp-chat input { padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(0, 0, 0, .3); color: #fff; font-size: 15px; }
+  .mp-card input:focus, .mp-chat input:focus { outline: none; border-color: var(--accent-a); }
+  .mp-big { padding: 13px; border-radius: 12px; border: none; font: 700 17px "Fredoka", "Inter", system-ui, sans-serif; color: var(--accent-ink, #fff);
+    background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); }
+  .mp-big:hover:not(:disabled) { filter: brightness(1.08); background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); }
+  .mp-or { display: flex; align-items: center; gap: 10px; color: #8f88aa; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  .mp-or::before, .mp-or::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .12); }
+  .mp-joinrow { display: flex; gap: 8px; }
+  .mp-joinrow input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: .2em; font-weight: 700; }
+  .mp-note { margin: 0; font-size: 12.5px; color: #9f97bf; line-height: 1.5; }
+  .mp-status { margin: 0; text-align: center; color: #cfc8e8; min-height: 1.4em; }
+  .mp-status.err { color: #ff8a8a; }
+  .mp-room { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(260px, 1fr); gap: 20px; }
+  @media (max-width: 820px) { .mp-room { grid-template-columns: 1fr; } }
+  .mp-left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .mp-codebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .mp-codebar span { color: #9f97bf; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+  .mp-codebar b { font: 700 28px "Fredoka", "Inter", system-ui, sans-serif; letter-spacing: .18em; color: var(--accent-a); filter: brightness(1.25); }
+  .mp-codebar button { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .12); }
+  .mp-codebar .mp-leave { margin-left: auto; }
+  .mp-map { display: flex; flex-direction: column; gap: 4px; }
+  .mp-map #mpPick { align-self: flex-start; margin-top: 12px; }
+  .mp-gorow { display: flex; align-items: center; gap: 14px; }
+  .mp-gorow .sel-play { margin-left: auto; }
+  .mp-gorow .sel-play.on { background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+  .mp-chat { display: flex; flex-direction: column; gap: 8px; border-radius: 14px; padding: 12px; background: rgba(14, 10, 28, .6); border: 1px solid rgba(255, 255, 255, .08); }
+  #mpChatLog { height: 150px; overflow-y: auto; font-size: 14px; line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+  #mpChatLog b { color: hsl(var(--h), 80%, 72%); margin-right: 4px; }
+  #mpChatLog .sys { color: #8f88aa; font-style: italic; font-size: 13px; }
+  #mpChatForm { display: flex; gap: 8px; }
+  #mpChatForm input { flex: 1; min-width: 0; font-size: 14px; padding: 8px 12px; }
+  .mp-players-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; font-size: 16px; }
+  #mpPlayers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  #mpPlayers li { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; background: rgba(16, 12, 32, .82); border: 1px solid rgba(255, 255, 255, .08); }
+  #mpPlayers li.me { border-color: var(--accent-a); }
+  #mpPlayers .av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font: 700 16px "Fredoka", "Inter", sans-serif; font-style: normal;
+    background: hsl(var(--h), 60%, 45%); color: #fff; flex: none; }
+  #mpPlayers b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #mpPlayers b small { color: #9f97bf; font-weight: 500; }
+  #mpPlayers .pill { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, .08); color: #cfc8e8; flex: none; }
+  #mpPlayers .pill.ok { background: #3ccf6e; color: #0b2414; }
+  #mpPlayers .pill.host { background: color-mix(in srgb, var(--accent-a), transparent 40%); color: #fff; }
+  #mpPlayers .pill.dl { background: #f6c14b; color: #2a1d00; }
+  #mpPlayers .pill.play { background: color-mix(in srgb, var(--accent-b), transparent 45%); color: #fff; }
+  #mpBoard { position: fixed; left: 14px; top: 50%; transform: translateY(-50%); z-index: 40; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px;
+    pointer-events: none; width: 210px; }
+  #mpBoard li { display: grid; grid-template-columns: 22px 1fr auto; column-gap: 8px; padding: 6px 10px; border-radius: 10px;
+    background: rgba(10, 8, 22, .62); border-left: 3px solid rgba(255, 255, 255, .2); }
+  #mpBoard li.me { border-left-color: var(--accent-a); background: rgba(10, 8, 22, .82); }
+  #mpBoard li.failed { opacity: .5; }
+  #mpBoard .rk { grid-row: span 2; align-self: center; font: 700 15px "Fredoka", "Inter", sans-serif; color: #b9b1d8; }
+  #mpBoard .nm { font-size: 13px; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #mpBoard .sc { font-size: 13px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+  #mpBoard .cb { grid-column: 2 / 4; font-size: 11.5px; color: #b9b1d8; font-variant-numeric: tabular-nums; }
+  #mpResults { width: min(640px, 88vw); }
+  #mpResults h3 { margin: 6px 0 8px; font: 600 16px "Fredoka", "Inter", sans-serif; color: #e4ddff; text-align: left; }
+  #mpResults ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  #mpResults li { display: grid; grid-template-columns: 42px 1fr auto; grid-template-rows: auto auto; column-gap: 10px; text-align: left; padding: 8px 12px; border-radius: 10px;
+    background: #12121c; border: 1px solid #222; }
+  #mpResults li.me { border-color: var(--accent-a); }
+  #mpResults .rk { grid-row: span 2; align-self: center; font: 700 18px "Fredoka", "Inter", sans-serif; }
+  #mpResults .nm { font-weight: 600; }
+  #mpResults .sc { font-weight: 700; font-variant-numeric: tabular-nums; }
+  #mpResults .st { grid-column: 2 / 4; font-size: 12.5px; color: var(--muted); }
   /* booting: the saved skin and settings are still loading; the logo stays hidden (and its intro waits) until they are in */
   #home .logo-spot { transition: left .55s cubic-bezier(.3, .9, .3, 1), opacity .35s ease; }
   #home .hint { transition: opacity .35s ease; }
@@ -275,8 +364,8 @@
   .sel-playrow { display: flex; align-items: center; gap: 16px; margin-top: 4px; }
   .check { display: flex; align-items: center; gap: 8px; }
   .sel-play { margin-left: auto; min-width: 180px; padding: 13px 28px; border-radius: 999px; font: 700 18px/1 "Fredoka", "Inter", system-ui, sans-serif; letter-spacing: .02em;
-    background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); border: none; color: #fff;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, .35); box-shadow: 0 8px 26px color-mix(in srgb, var(--accent-a), transparent 55%); transition: transform .15s, box-shadow .15s, filter .15s; }
+    background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); border: none; color: var(--accent-ink, #fff);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .2); box-shadow: 0 8px 26px color-mix(in srgb, var(--accent-a), transparent 55%); transition: transform .15s, box-shadow .15s, filter .15s; }
   .sel-play:hover:not(:disabled) { transform: translateY(-1px) scale(1.03); filter: brightness(1.08); background: linear-gradient(90deg, var(--accent-a), color-mix(in srgb, var(--accent-a), var(--accent-b) 45%)); }
   .sel-play:disabled { background: rgba(255, 255, 255, .08); box-shadow: none; }
   .sel-right { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
@@ -472,7 +561,7 @@
   <section id="playmenu" class="screen home-screen" aria-label="Play" hidden>
     <div class="notes">
       <button id="menuSolo" class="note" style="--x:12%;--y:64%;--i:0" data-n="1"><canvas aria-hidden="true"></canvas><span class="label">Solo</span></button>
-      <button disabled title="Not in this port yet" class="note" style="--x:37%;--y:24%;--i:1" data-n="2"><canvas aria-hidden="true"></canvas><span class="label">Multiplayer<small>not here yet</small></span></button>
+      <button id="menuMulti" class="note" style="--x:37%;--y:24%;--i:1" data-n="2"><canvas aria-hidden="true"></canvas><span class="label">Multiplayer</span></button>
       <button disabled title="Not in this port yet" class="note" style="--x:63%;--y:64%;--i:2" data-n="3"><canvas aria-hidden="true"></canvas><span class="label">Playlists<small>not here yet</small></span></button>
       <button id="backPlay" data-slider="1" class="note" style="--x:88%;--y:24%;--i:3" data-n="4"><canvas aria-hidden="true"></canvas><span class="label">Back</span></button>
     </div>
@@ -538,9 +627,50 @@
     <footer class="sel-foot"><span class="muted">Keys: <span id="dropKeys"></span></span><span class="muted">↑ ↓ maps · ← → difficulty · Enter plays · Esc goes back</span></footer>
   </section>
 
+  <section id="mp" class="screen" aria-label="Multiplayer" hidden>
+    <header class="sel-top">
+      <button id="mpBack" class="sel-back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Back</button>
+      <div class="sel-heading"><span class="sel-kicker">Play together</span><h2>Multiplayer</h2></div>
+    </header>
+    <div class="mp-body">
+      <div id="mpJoin" class="mp-join">
+        <div class="mp-card">
+          <label class="mp-field"><span>Your name</span><input id="mpName" maxlength="24" autocomplete="nickname" spellcheck="false"></label>
+          <button id="mpCreate" class="mp-big">Create a room</button>
+          <div class="mp-or"><span>or join one</span></div>
+          <div class="mp-joinrow"><input id="mpJoinCode" maxlength="8" placeholder="Room code" aria-label="Room code" autocomplete="off" spellcheck="false"><button id="mpJoinBtn">Join</button></div>
+          <p class="mp-note">Players connect straight to each other. Everyone needs the same map: if someone doesn't have it, the host sends it to them.</p>
+        </div>
+      </div>
+      <div id="mpRoom" class="mp-room" hidden>
+        <div class="mp-left">
+          <div class="mp-codebar"><span>Room</span><b id="mpCode"></b><button id="mpCopy">Copy invite link</button><button id="mpLeave" class="mp-leave">Leave</button></div>
+          <div class="sel-card mp-map">
+            <span class="sel-kicker">Map</span>
+            <div class="sel-title" id="mpMapTitle"></div>
+            <div class="sel-artist" id="mpMapArtist"></div>
+            <div class="sel-diffname" id="mpMapDiff"></div>
+            <button id="mpPick">Choose map</button>
+          </div>
+          <div class="mp-gorow"><span class="muted" id="mpHint"></span><button id="mpGo" class="sel-play">Start</button></div>
+          <div class="mp-chat">
+            <div id="mpChatLog" aria-live="polite"></div>
+            <form id="mpChatForm"><input id="mpChatIn" maxlength="300" placeholder="Say something…" aria-label="Chat message" autocomplete="off"><button>Send</button></form>
+          </div>
+        </div>
+        <div class="mp-right">
+          <div class="mp-players-head"><b>Players</b><span class="muted" id="mpCount"></span></div>
+          <ul id="mpPlayers"></ul>
+        </div>
+      </div>
+      <p id="mpStatus" class="mp-status" role="status"></p>
+    </div>
+  </section>
+
   <section id="result" class="screen" aria-label="Results" hidden>
     <div id="grade" class="grade">–</div>
     <div id="resultText"></div>
+    <div id="mpResults" hidden></div>
     <div class="menu-buttons">
       <button id="retry" class="primary">Retry (R)</button>
       <button id="quit" style="--c:#333a5e">Back to select</button>
@@ -616,6 +746,8 @@
     <div class="tfoot"><div class="dots" id="tourDots"></div><button class="skip" id="tourSkip">Skip</button><button id="tourBack">Back</button><button class="next" id="tourNext">Next</button></div>
   </div>
 </div>
+<ol id="mpBoard" hidden aria-label="Room scores"></ol>
+<div id="seekHud" hidden aria-live="polite"><span id="seekIcon"></span><span id="seekLabel"></span><small id="seekSpeed"></small><span class="bar"><i id="seekBar"></i></span></div>
 <div id="status">Loading core…</div>
 <div id="videoNote"></div>
 
@@ -634,6 +766,7 @@ import { createResume, RESUME_HIT } from "./resume.js";
 import { loadDefaultSamples, createLoops } from "./hitsounds.js";
 import { aimAssist, installAimAssistCode } from "./aim-assist.js";
 import { aimbot, installAimbotCode } from "./aimbot.js";
+import { createMultiplayer } from "./multiplayer.js";
 
 const $ = (s) => document.querySelector(s);
 const statusEl = $("#status");
@@ -763,7 +896,7 @@ try {
 // ---- screens ----
 // The menus are full-window panels over the canvas, one at a time. The pause and settings panels
 // can sit over a round.
-const MENUS = ["menu", "playmenu", "select", "result"];
+const MENUS = ["menu", "playmenu", "select", "result", "mp"];
 function showScreen(name) {
   screen = name;
   document.body.dataset.screen = name;
@@ -870,7 +1003,7 @@ addEventListener("keydown", (e) => {
     return;
   }
   if (e.code === "KeyR" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    if (difficulties.length && (screen === "play" || screen === "result")) {
+    if (difficulties.length && (screen === "play" || screen === "result") && !document.body.dataset.mp) {
       e.preventDefault();
       if (!e.repeat) startPlay();
     }
@@ -1079,7 +1212,10 @@ async function openOsz(blob, name = blob.name, remember = true) {
     let note = "";
     if (remember) {
       const cover = await coverFromEntries(zipEntries);
-      if (await saveMap({ name, blob, cover })) await refreshMapList();
+      // a picked or dropped File is kept as a copy: Chrome would otherwise store a link to the file on disk,
+      // and the saved map would break once that file is moved or deleted
+      const copy = blob instanceof File ? new Blob([await blob.arrayBuffer()], { type: blob.type || "application/zip" }) : blob;
+      if (await saveMap({ name, blob: copy, cover })) await refreshMapList();
       else note = " (browser storage is unavailable, so this map will not be kept)";
     }
     openedName = name;
@@ -1421,7 +1557,8 @@ function collectHitErrors(recs, t) {
   }
   const d = recs.data;
   for (let i = 0; i < recs.count; i++) {
-    if (errorSeen[i] || d[i * 16 + 8] === 0) continue;
+    if (d[i * 16 + 8] === 0) { errorSeen[i] = 0; continue; }
+    if (errorSeen[i]) continue;
     errorSeen[i] = 1;
     const kind = d[i * 16];
     const res = d[i * 16 + 10];
@@ -1560,6 +1697,225 @@ function seekTo(ms) {
     perfStart = performance.now() - pausedTotal - raw / playRate;
   }
 }
+
+// ---- practice: hold ← to rewind, → to fast forward ----
+// While a round plays, the core's state (judgements, score, combo, health) is saved every CP_EVERY ms of song time,
+// each checkpoint keeping only the objects that changed since the one before. Holding ← runs the song backwards:
+// each checkpoint passed is restored, so hits and misses come undone in reverse (with a VHS look) and can be played
+// again once the key is let go. Holding → runs the song forwards fast and skips every object it passes: they score
+// nothing and break nothing. Both speed up the longer the key is held. Let go and the round carries on from there.
+const CP_EVERY = 250;
+const PRACTICE = { cps: [], cur: null, seek: null, rewinds: 0, skipped: false, rev: null, revOf: null, keys: new Set() };
+function practiceReset() {
+  PRACTICE.cps = [];
+  PRACTICE.cur = null;
+  PRACTICE.seek = null;
+  PRACTICE.rewinds = 0;
+  PRACTICE.skipped = false;
+  PRACTICE.keys.clear();
+  document.body.classList.remove("rewinding", "ffwd");
+  $("#seekHud").hidden = true;
+}
+// [topN, nestN, varLen] [52 globals] [22 per object] [3 per nested object] [spinner histories]
+function stateLayout(s) {
+  const top = s[0], nest = s[1], gEnd = 3 + 52;
+  return { top, nest, gEnd, nestAt: gEnd + 22 * top, fixedEnd: gEnd + 22 * top + 3 * nest };
+}
+function takeCheckpoint(t) {
+  if (!core?.canRewind) return;
+  const s = core.saveState();
+  if (!s) return;
+  const L = stateLayout(s);
+  const cp = { t, glob: s.slice(0, L.gEnd), vars: s.slice(L.fixedEnd), changes: [] };
+  const cur = PRACTICE.cur;
+  if (cur && cur.length === L.fixedEnd) {
+    const scan = (from, n, size) => {
+      for (let i = 0, o = from; i < n; i++, o += size) {
+        for (let k = 0; k < size; k++) {
+          if (cur[o + k] !== s[o + k]) { cp.changes.push({ o, old: cur.slice(o, o + size) }); cur.set(s.subarray(o, o + size), o); break; }
+        }
+      }
+    };
+    scan(L.gEnd, L.top, 22);
+    scan(L.nestAt, L.nest, 3);
+    cur.set(s.subarray(0, L.gEnd), 0);
+  } else {
+    PRACTICE.cur = s.slice(0, L.fixedEnd);
+    PRACTICE.cps = [];
+  }
+  PRACTICE.cps.push(cp);
+}
+// Puts the core back to checkpoint j, undoing the later ones; they are dropped (the song's future is replayed).
+function restoreTo(j) {
+  const { cps, cur } = PRACTICE;
+  if (!cur || j < 0 || j >= cps.length) return false;
+  for (let k = cps.length - 1; k > j; k--) for (const c of cps[k].changes) cur.set(c.old, c.o);
+  cps.length = j + 1;
+  const cp = cps[j];
+  cur.set(cp.glob, 0);
+  const full = new Float64Array(cur.length + cp.vars.length);
+  full.set(cur);
+  full.set(cp.vars, cur.length);
+  return core.loadState(full);
+}
+const cpIndexAt = (t) => { const c = PRACTICE.cps; let j = c.length - 1; while (j > 0 && c[j].t > t) j--; return j; };
+// The song backwards, for the rewind sound (made once per song).
+function reversedSong() {
+  if (PRACTICE.revOf === songBuffer) return PRACTICE.rev;
+  const b = songBuffer;
+  const r = audioCtx.createBuffer(b.numberOfChannels, b.length, b.sampleRate);
+  for (let ch = 0; ch < b.numberOfChannels; ch++) {
+    const src = b.getChannelData(ch), dst = r.getChannelData(ch), n = src.length;
+    for (let i = 0; i < n; i++) dst[i] = src[n - 1 - i];
+  }
+  PRACTICE.rev = r;
+  PRACTICE.revOf = b;
+  return r;
+}
+// the Practice settings: a speed for each direction, doubling over two seconds of holding when "Speed up while held" is on
+const seekSpeed = (heldMs, dir) => {
+  const base = dir < 0 ? (S.rewindSpeed ?? 1.5) : (S.ffSpeed ?? 2);
+  return base * (S.seekRamp === false ? 1 : 1 + Math.min(1, heldMs / 2000));
+};
+function seekAudio() {
+  stopSource();
+  const sk = PRACTICE.seek;
+  if (!sk || !songBuffer || !audioCtx) return;
+  const at = (sk.t + S.offset) / 1000;
+  if (at < 0 || at >= songBuffer.duration) return;
+  // a pause leaves the song muted: the seek sound is heard again
+  silentFrom = null;
+  spinMute.gain.cancelScheduledValues(audioCtx.currentTime);
+  spinMute.gain.setValueAtTime(1, audioCtx.currentTime);
+  try {
+    source = audioCtx.createBufferSource();
+    source.buffer = sk.dir < 0 ? reversedSong() : songBuffer;
+    source.connect(spinMute);
+    source.playbackRate.value = Math.min(4, seekSpeed(0, sk.dir)) * playRate;
+    source.start(audioCtx.currentTime + 0.01, sk.dir < 0 ? songBuffer.duration - at : at);
+  } catch (_) { source = null; }
+}
+const ICON_RW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 6v12l-8.5-6zM21 6v12l-8.5-6z"/></svg>';
+const ICON_FF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13 6v12l8.5-6zM3 6v12l8.5-6z"/></svg>';
+function startSeek(dir) {
+  if (!playing || finished || !core?.canRewind || document.body.dataset.mp) return;   // not in a multiplayer round
+  // from a pause (the pause menu or the orange cursor): seeking takes over, and letting go pauses again
+  if (paused) {
+    paused = false;
+    resumePrompt = null;
+    $("#pause").hidden = true;
+    syncCursor();
+  }
+  const sk = PRACTICE.seek;
+  if (sk) {
+    if (sk.dir === dir) return;
+    sk.dir = dir;
+    sk.held = performance.now();
+  } else {
+    if (!PRACTICE.cps.length) takeCheckpoint(songMs());
+    PRACTICE.seek = { dir, t: songMs(), wall: performance.now(), held: performance.now() };
+    loops.stopAll();
+    queued = [];
+  }
+  if (dir < 0) PRACTICE.rewinds++; else PRACTICE.skipped = true;
+  document.body.classList.toggle("rewinding", dir < 0);
+  document.body.classList.toggle("ffwd", dir > 0);
+  $("#seekIcon").innerHTML = dir < 0 ? ICON_RW : ICON_FF;
+  $("#seekLabel").textContent = dir < 0 ? "Rewind" : "Fast forward";
+  $("#seekHud").hidden = false;
+  seekAudio();
+}
+// One frame of seeking: moves the song time and the core with it. Returns the song time to draw.
+function seekStep() {
+  const sk = PRACTICE.seek;
+  const now = performance.now();
+  const dt = Math.min(100, now - sk.wall);
+  sk.wall = now;
+  const speed = seekSpeed(now - sk.held, sk.dir);
+  const st = core.stats();
+  const lo = PRACTICE.cps.length ? PRACTICE.cps[0].t : roundStartMs;
+  const hi = Math.max(lo, st.endTime);
+  sk.t = Math.max(lo, Math.min(hi, sk.t + sk.dir * speed * dt * playRate));
+  if (sk.dir < 0) {
+    const j = cpIndexAt(sk.t);
+    if (j < PRACTICE.cps.length - 1) restoreTo(j);
+  } else {
+    core.skipUntil(sk.t);
+  }
+  if (source) source.playbackRate.value = Math.min(4, speed) * playRate;
+  $("#seekSpeed").textContent = `${speed.toFixed(1)}×`;
+  const span = Math.max(1, st.endTime - roundStartMs);
+  $("#seekBar").style.width = `${Math.max(0, Math.min(1, (sk.t - roundStartMs) / span)) * 100}%`;
+  return sk.t;
+}
+// Let go: the round waits, paused, where the seek stopped (a rewind at the checkpoint it landed on), and the orange
+// cursor asks for a click to carry on, as after a pause.
+function endSeek() {
+  const sk = PRACTICE.seek;
+  if (!sk) return;
+  PRACTICE.seek = null;
+  document.body.classList.remove("rewinding", "ffwd");
+  $("#seekHud").hidden = true;
+  let target = sk.t;
+  if (sk.dir < 0 && PRACTICE.cps.length) {
+    const j = cpIndexAt(target);
+    restoreTo(j);
+    target = PRACTICE.cps[j].t;
+  } else {
+    core.skipUntil(target);
+  }
+  stopSource();
+  queued = [];
+  autoT = null;
+  cursorTrail.length = 0;
+  botDone.clear();
+  loops.stopAll();
+  const raw = target + S.offset;               // songMs() takes the audio offset off again
+  held.clear();
+  releaseMouse();
+  if (songBuffer && audioCtx) {
+    // the song is set up at the target and held still and silent, exactly like a pause; the resume speeds it up
+    const when = audioCtx.currentTime;
+    const zero = when - raw / 1000 / playRate;
+    clock.reset(zero, playRate);
+    source = audioCtx.createBufferSource();
+    source.buffer = songBuffer;
+    source.connect(spinMute);
+    source.playbackRate.value = playRate;
+    if (raw >= 0) source.start(when, raw / 1000);
+    else source.start(zero);
+    spinSong(0, 0);
+    spinMute.gain.cancelScheduledValues(when);
+    spinMute.gain.setValueAtTime(0, when);
+    silentFrom = when;
+  } else {
+    perfStart = performance.now() - pausedTotal - raw / playRate;
+    pausedAt = performance.now();
+  }
+  paused = true;
+  requestResume();             // the orange cursor (or straight on when the pointer is off the page)
+  syncCursor();
+}
+addEventListener("keydown", (e) => {
+  if (e.code !== "ArrowLeft" && e.code !== "ArrowRight") {
+    if (PRACTICE.seek && e.code === "Escape") endSeek();
+    return;
+  }
+  if (screen !== "play" || !playing || finished || S.keys.some((k) => k.code === e.code)) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  PRACTICE.keys.add(e.code);
+  if (!e.repeat || !PRACTICE.seek) startSeek(e.code === "ArrowLeft" ? -1 : 1);
+}, true);
+addEventListener("keyup", (e) => {
+  if (e.code !== "ArrowLeft" && e.code !== "ArrowRight") return;
+  PRACTICE.keys.delete(e.code);
+  if (!PRACTICE.seek) return;
+  if (PRACTICE.keys.has("ArrowLeft")) startSeek(-1);
+  else if (PRACTICE.keys.has("ArrowRight")) startSeek(1);
+  else endSeek();
+}, true);
+addEventListener("blur", () => { PRACTICE.keys.clear(); endSeek(); });
 function skipIntro() {
   if (!playing || paused || finished) return false;
   const first = core.stats().firstTime;
@@ -1570,6 +1926,8 @@ function skipIntro() {
 
 // ---- playback ----
 async function startPlay() {
+  // choosing the map for a multiplayer room: Play hands the choice back instead of starting
+  if (mpPick) { const cb = mpPick; endMpPick(); cb(mpSelection()); return; }
   if (!core || !zipEntries) return;
   dispatchEvent(new Event("round-start"));   // song select counts plays (Recently / Most played)
   playing = false;                          // stop the loop from updating while the round is set up
@@ -1650,6 +2008,7 @@ async function startPlay() {
   autoT = null;
   errorSeen = null;
   hitErrors = [];
+  practiceReset();
   playing = true;
   lockPointer();
 }
@@ -1723,6 +2082,7 @@ function resetSpin() {
 // The pause itself: the song starts to slow, the pause menu comes up. Nothing is redrawn here; the frame
 // loop keeps the picture moving through the slowdown and holds it after.
 function pauseRound() {
+  if (PRACTICE.seek) endSeek();
   paused = true;
   loops.stopAll();
   resumePrompt = null;        // a prompt still fading out from the last resume goes at once
@@ -1821,6 +2181,7 @@ function quitToSelect() {
   queued = [];
   held.clear();
   releaseMouse();
+  if (mp?.roundOver(true)) { showScreen("mp"); statusEl.textContent = ""; return; }
   showScreen("select");
   statusEl.textContent = "Back in song select. Press Play to start again.";
   statusEl.classList.remove("err");
@@ -1998,7 +2359,7 @@ $("#sf").onchange = async (e) => {
   const name = f.name.replace(/\.(osk|zip)$/i, "").trim() || "Skin";
   try {
     await loadSkinFile(f, decodeCtx);        // throws on a bad file, so nothing is saved
-    const rec = { name, blob: f };
+    const rec = { name, blob: new Blob([await f.arrayBuffer()], { type: f.type || "application/zip" }) };   // a copy, not a link to the file
     await saveSkin(rec);                     // best effort: the skin still works for this visit
     skinRecords = skinRecords.filter((r) => r.name !== name).concat(rec);
     renderSkinList();
@@ -2339,7 +2700,10 @@ function showResult(st) {
       <div class="stat"><b>${st.ok}</b><span>${LABEL[RES.OK]}</span></div>
       <div class="stat"><b>${st.meh}</b><span>${LABEL[RES.MEH]}</span></div>
       <div class="stat"><b>${st.miss}</b><span>${LABEL[RES.MISS]}</span></div>
-    </div>`;
+    </div>${PRACTICE.rewinds || PRACTICE.skipped ? `<div class="practice-note">Practice run: ${[PRACTICE.rewinds ? `rewound ${PRACTICE.rewinds} time${PRACTICE.rewinds === 1 ? "" : "s"}` : "", PRACTICE.skipped ? "fast-forwarded" : ""].filter(Boolean).join(", ")}</div>` : ""}`;
+  // in a multiplayer round: back goes to the room, and there is no retry
+  $("#quit").textContent = document.body.dataset.mp ? "Back to room" : "Back to select";
+  $("#retry").hidden = !!document.body.dataset.mp;
   showScreen("result");
 }
 
@@ -2373,15 +2737,17 @@ function frame() {
     if (resumePrompt && lastDraw) drawHeld();
     return;
   }
-  const t = songMs();
+  const seeking = !!PRACTICE.seek;
+  const t = seeking ? seekStep() : songMs();
   if (!S.relative && !paused && pointerAt) cursor = screenToPlayfield(pointerAt.x, pointerAt.y);
   let x = cursor.x;
   let y = cursor.y;
-  let mask = currentMask();
-  if (!$("#auto").checked && aimbot.enabled) ({ x, y } = aimbot.apply(t, cursor, core.records(), core.topCount()));
+  let mask = seeking ? 0 : currentMask();
+  if (seeking) { /* the core is moved by seekStep; no input while seeking */ }
+  else if (!$("#auto").checked && aimbot.enabled) ({ x, y } = aimbot.apply(t, cursor, core.records(), core.topCount()));
   else if (!$("#auto").checked && aimAssist.enabled) ({ x, y } = aimAssist.apply(t, cursor, core.records(), core.topCount()));
 
-  if ($("#auto").checked) {
+  if ($("#auto").checked && !seeking) {
     // Lazer plays autoplay back at a fixed rate (its FrameStabilityContainer), so how fast the page draws does
     // not change the result: the steps since the last frame are played first, AUTO_STEP ms apart.
     if (autoT !== null && t > autoT && t - autoT < 1000) {
@@ -2399,8 +2765,13 @@ function frame() {
     cursor = { x, y };
   }
 
-  deliverPresses(t);
-  core.update(t, x, y, mask);
+  if (!seeking) {
+    deliverPresses(t);
+    core.update(t, x, y, mask);
+    // a checkpoint for rewinding every CP_EVERY ms of song time
+    const lastCp = PRACTICE.cps.length ? PRACTICE.cps[PRACTICE.cps.length - 1].t : -Infinity;
+    if (t >= lastCp + CP_EVERY) takeCheckpoint(t);
+  }
 
   const recs = core.records();
   const st = core.stats();
@@ -2414,8 +2785,10 @@ function frame() {
     flashlight.y += (y - flashlight.y) * ease;
     flashlight.t = t;
   }
-  playObjectSounds(recs);
-  updateLoopSounds(recs, t);
+  if (!seeking) {
+    playObjectSounds(recs);
+    updateLoopSounds(recs, t);
+  }
   // Cursor rotation turns with the distance moved; the trail keeps the last 150 ms of positions.
   cursorAngle += S.cursorRotate ? Math.hypot(x - cursorPrev.x, y - cursorPrev.y) * 0.08 : 0;
   cursorPrev = { x, y };
@@ -2464,12 +2837,15 @@ function frame() {
     resume: (() => { const l = promptLayer(); return l && { ...l, size: S.cursorSize }; })(),
   };
   renderer.draw(lastDraw);
+  mp?.tick(st);
 
   if ((st.failed || st.finished) && !finished) {
+    if (PRACTICE.seek) { PRACTICE.seek = null; document.body.classList.remove("rewinding", "ffwd"); $("#seekHud").hidden = true; stopSource(); }
     finished = true;
     loops.stopAll();
     syncCursor();
     showResult(st);
+    mp?.finish(st);
   }
   if (!finished) statusEl.textContent = `t=${Math.max(0, t).toFixed(0)} ms · ${st.judgements | 0}/${core.topCount()} judged · ${(st.accuracy * 100).toFixed(2)}%`;
 }
@@ -2540,7 +2916,7 @@ window.osuDemo = {
   const g = fx.getContext("2d");
   const cookie = $("#cookie");
   const HOME = ["menu", "playmenu"];
-  const MUSIC_SCREENS = ["menu", "playmenu"];   // song select (Solo) pauses it; coming back resumes
+  const MUSIC_SCREENS = ["menu", "playmenu", "mp"];   // song select (Solo) pauses it; coming back resumes
   const isHome = () => HOME.includes(document.body.dataset.screen);
   // the Main menu animations setting: on (default), off, or following the system's reduce motion
   const reduce = () => S.menuFx === "off" || (S.menuFx === "system" && matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -2956,6 +3332,8 @@ window.osuDemo = {
     document.body.style.setProperty("--logo-rgb", (menu || body) ? rgb.join(",") : "255, 102, 170");   // the tutorial's accents too
     // the corner stripes and the song bar: the skin's first two combo colours
     const homeEl = $("#home");
+    const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+    document.body.style.setProperty("--accent-ink", (menu || body) && lum > 0.62 ? "#1a1430" : "#fff");
     for (const el of [homeEl, document.body]) {
       if (menu || body) {
         el.style.setProperty("--accent-a", `rgb(${rgb.join(",")})`);
@@ -3184,6 +3562,7 @@ window.osuDemo = {
   const spot = home.querySelector(".logo-spot");
   const frame = (now) => {
     requestAnimationFrame(frame);
+    drawLogo();             // the skin's colours apply on every screen (song select too); cheap when nothing changed
     if (!isHome()) return;
     const dt = Math.min(50, now - last);
     last = now;
@@ -3779,7 +4158,7 @@ const osuImport = (() => {
       const lh = new DataView(new ArrayBuffer(30));
       lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
       lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true);
-      parts.push(lh, name, file);
+      parts.push(lh, name, data);   // the bytes themselves, so the saved zip doesn't depend on the files staying
       const ch = new DataView(new ArrayBuffer(46));
       ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
       ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
@@ -3995,6 +4374,70 @@ const osuImport = (() => {
   return { open };
 })();
 
+// ---- multiplayer (multiplayer.js): the page's side ----
+let mpPick = null;           // the room's "Choose map": the callback that takes song select's choice
+function mpSelection() {
+  const k = +$("#diff").value || 0;
+  const d = difficulties[k];
+  return openedName && d ? { name: openedName, diffIndex: k, diffName: d.name, mods: [...mods], title: d.meta.title, artist: d.meta.artist } : null;
+}
+function endMpPick() {
+  mpPick = null;
+  $("#play").textContent = "Play";
+  delete document.body.dataset.mppick;
+}
+const mp = createMultiplayer({
+  $,
+  showScreen: (s) => showScreen(s),
+  screen: () => screen,
+  maps: () => savedMaps,
+  selection: mpSelection,
+  // a map the host sent: saved like an imported one
+  async saveMap(name, blob) {
+    let cover = null;
+    try { cover = await coverFromEntries(await readZip(await blob.arrayBuffer())); } catch (_) {}
+    const ok = await saveMap({ name, blob, cover });
+    await refreshMapList();
+    return ok;
+  },
+  // the room's round: its map, difficulty and mods (no autoplay), started at once
+  async play(m) {
+    const rec = savedMaps.find((r) => r.name === m.name);
+    if (!rec) return false;
+    if (paused || playing) quitRoundQuietly();
+    await openOsz(rec.blob, rec.name, false);
+    if (!difficulties.length) return false;
+    const k = difficulties.findIndex((d) => d.name === m.diffName);
+    $("#diff").value = String(k >= 0 ? k : Math.min(m.diffIndex || 0, difficulties.length - 1));
+    mods = new Set(m.mods || []);
+    $("#auto").checked = false;
+    renderMods();
+    await startPlay();
+    return true;
+  },
+  pickMap(cb) {
+    mpPick = cb;
+    $("#play").textContent = "Choose for room";
+    document.body.dataset.mppick = "1";
+    showScreen("select");
+  },
+});
+// a round that is still on when the room starts the next one
+function quitRoundQuietly() {
+  stopSource();
+  unloadVideo();
+  playing = false;
+  paused = false;
+  finished = false;
+  resumePrompt = null;
+}
+$("#menuMulti").onclick = () => showScreen("mp");
+new MutationObserver(() => {
+  // leaving song select without choosing a map for the room goes back to the room
+  if (mpPick && screen !== "select") { endMpPick(); if (screen === "playmenu") showScreen("mp"); }
+  mp.screenChanged();
+}).observe(document.body, { attributes: true, attributeFilter: ["data-screen"] });
+
 // ---- first-visit tutorial: walks through opening the menu, Settings (keys, skin, the rest) and adding beatmaps,
 // showing each on the real screen. It runs once (remembered in this browser); Settings > Show tutorial replays it. ----
 const tour = (() => {
@@ -4127,6 +4570,27 @@ argonSkin = await buildArgonSkin().catch(() => null);   // the default look need
 applySkin();
 await refreshSkinList();
 await refreshMapList();
+// Skins and maps saved by earlier versions may be links to files on disk (see openOsz). Copy each one in while its
+// file still exists, so it keeps working after the file is moved or deleted. Runs in the background.
+(async () => {
+  const fix = async (list, save, kind) => {
+    let broken = 0;
+    for (const r of list) {
+      if (!(r.blob instanceof File)) continue;
+      try { r.blob = new Blob([await r.blob.arrayBuffer()], { type: r.blob.type || "application/zip" }); await save(r); }
+      catch (_) { broken++; }
+    }
+    return broken;
+  };
+  try {
+    const bs = await fix(skinRecords, saveSkin, "skin");
+    const bm = await fix(savedMaps, saveMap, "map");
+    if (bs || bm) {
+      statusEl.textContent = `${bs ? `${bs} skin${bs === 1 ? "" : "s"}` : ""}${bs && bm ? " and " : ""}${bm ? `${bm} beatmap${bm === 1 ? "" : "s"}` : ""} saved earlier can't be read any more (the original file was moved or deleted). Add ${bs + bm === 1 ? "it" : "them"} again to fix this.`;
+      statusEl.classList.add("err");
+    }
+  } catch (e) { console.error(e); }
+})();
 showScreen("menu");
 refreshView();
 try {
@@ -4138,7 +4602,9 @@ finally {
   // two frames so the logo is drawn in the skin before it shows, then its intro plays
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("booting")));
   // a first visit gets the tutorial, once the logo's intro has played
-  setTimeout(() => tour.startIfNew(), 1300);
+  // an invite link opens the multiplayer screen with the room's code filled in (no tutorial in the way)
+  if (mp.invited) showScreen("mp");
+  else setTimeout(() => tour.startIfNew(), 1300);
 }
 </script>
 </body>

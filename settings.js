@@ -42,6 +42,12 @@ export const SETTING_DEFS = [
   { section: "Audio", key: "hitsounds", type: "bool", def: true, label: "Hit sounds" },
   { section: "Audio", key: "unmuteMaps", type: "bool", def: true, label: "Hit sounds on muted maps",
     tip: "Some maps set their hit sound volume to 0 on purpose. On plays them at full volume anyway; off keeps them silent, as osu! does." },
+  { section: "Practice", key: "rewindSpeed", type: "range", def: 1.5, min: 0.5, max: 6, step: 0.1, label: "Rewind speed (×)",
+    tip: "How fast holding ← rewinds a map while playing." },
+  { section: "Practice", key: "ffSpeed", type: "range", def: 2, min: 0.5, max: 8, step: 0.1, label: "Fast forward speed (×)",
+    tip: "How fast holding → skips ahead while playing." },
+  { section: "Practice", key: "seekRamp", type: "bool", def: true, label: "Speed up while held",
+    tip: "Holding the key longer speeds it up, to twice the speed above over two seconds." },
 ];
 
 // Copies stored values onto s. Anything that does not match its type or range keeps the default.

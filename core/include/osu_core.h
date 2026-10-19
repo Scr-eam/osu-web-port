@@ -76,6 +76,12 @@ const float* osu_slider_points(int topIndex); // stacked polyline, x,y pairs
 // 31 total judgements
 const double* osu_stats(void);
 
+// Practice (rewind / fast forward): the judgement, score and health state, saved and restored as doubles.
+double* osu_state_buffer(int length);   // the buffer osu_state_save writes / osu_state_load reads
+int osu_state_save(void);               // returns the state's length in doubles
+int osu_state_load(int length);         // 1 = restored
+void osu_skip_until(double timeMs);     // skips every unjudged object starting before timeMs (no result)
+
 #ifdef __cplusplus
 }
 #endif

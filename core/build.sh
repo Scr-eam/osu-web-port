@@ -14,6 +14,7 @@ EXPORTS=(
   osu_input_buffer osu_load osu_error osu_meta
   osu_skin_buffer osu_set_skin_colours osu_colour_count osu_colours
   osu_restart osu_update osu_press osu_set_mods
+  osu_state_buffer osu_state_save osu_state_load osu_skip_until
   osu_fill_records osu_records osu_top_count osu_slider_point_count osu_slider_points osu_stats
 )
 

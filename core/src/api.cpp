@@ -76,6 +76,14 @@ static int* g_polyCount = 0;
 static double g_prevFrameT = 0;
 static double g_stats[32];
 
+// ---- practice: rewind / fast forward ----
+// Objects passed over by a fast forward are skipped: marked judged with no result, so they score nothing,
+// break nothing and are not drawn (judgedAt far in the past). They still count towards the end of the map.
+static int g_skipCount = 0;
+static double* g_stBuf = 0;   // osu_state_save / osu_state_load buffer (in the arena; reset by a load)
+static int g_stCap = 0;
+static const double SKIPPED_AT = -1e9;
+
 static int actsFromMask(int m) {
     int a = 0;
     if (m & (1 | 4)) a |= ACT_LEFT;
@@ -191,7 +199,7 @@ static void fillStats() {
     s[7] = g_resCount[RES_MISS];
     s[8] = g_health;
     s[9] = g_failed ? 1 : 0;
-    s[10] = (g_judgedCount >= g_maxJudgedCount && g_now >= g_gameplayEnd) ? 1 : 0;
+    s[10] = (g_judgedCount + g_skipCount >= g_maxJudgedCount && g_now >= g_gameplayEnd) ? 1 : 0;
     s[11] = rankValue();
     s[12] = g_now;
     s[13] = g_gameplayEnd;
@@ -243,6 +251,9 @@ int osu_load(int length) {
     scoreResetLive();
     g_now = 0;
     g_prevFrameT = g_drainStart;
+    g_skipCount = 0;
+    g_stBuf = 0;              // the arena was reset by the load
+    g_stCap = 0;
     g_err = "";
     g_loaded = true;
     return 1;
@@ -289,6 +300,7 @@ void osu_restart(void) {
     scoreResetLive();
     g_now = 0;
     g_prevFrameT = g_drainStart;
+    g_skipCount = 0;
 }
 
 void osu_update(double timeMs, float x, float y, int mask) {
@@ -334,6 +346,127 @@ const float* osu_slider_points(int topIndex) {
 const double* osu_stats(void) {
     fillStats();
     return g_stats;
+}
+
+// ---- state save / load (rewind) ----
+// Layout, all doubles: [topN, nestN, varLen] [G globals] [TB per top-level object] [NB per nested object]
+// [var: per spinner, its spin history: count, times..., count, dirs...]
+static const int ST_G = 52, ST_TB = 22, ST_NB = 3;
+
+static int stateVarLen() {
+    int v = 0;
+    for (int i = 0; i < g_top.n; i++)
+        if (g_top[i].kind == K_SPINNER) v += 2 + g_top[i].spinTimes.n + g_top[i].spinDirs.n;
+    return v;
+}
+
+double* osu_state_buffer(int length) {
+    if (length < 0) return 0;
+    if (length > g_stCap) {
+        double* nb = (double*)arenaAlloc(sizeof(double) * (unsigned long)(length + 1024));
+        if (!nb) return 0;
+        g_stBuf = nb;
+        g_stCap = length + 1024;
+    }
+    return g_stBuf;
+}
+
+int osu_state_save(void) {
+    if (!g_loaded) return 0;
+    int var = stateVarLen();
+    int len = 3 + ST_G + ST_TB * g_top.n + ST_NB * g_nest.n + var;
+    double* b = osu_state_buffer(len);
+    if (!b) return 0;
+    b[0] = g_top.n; b[1] = g_nest.n; b[2] = var;
+    double* g = b + 3;
+    g[0] = g_now; g[1] = g_mx; g[2] = g_my; g[3] = g_held; g[4] = g_started ? 1 : 0; g[5] = g_prevFrameT;
+    g[6] = g_combo; g[7] = g_highestCombo; g[8] = g_curBase; g[9] = g_curMaxBase; g[10] = g_curComboPortion;
+    g[11] = g_curBonus; g[12] = g_curAccCount; g[13] = g_totalScore; g[14] = g_health; g[15] = g_failed ? 1 : 0;
+    g[16] = g_judgedCount; g[17] = g_comboResult; g[18] = 0; g[19] = g_skipCount;
+    for (int i = 0; i < 32; i++) g[20 + i] = g_resCount[i];
+    double* t = g + ST_G;
+    for (int i = 0; i < g_top.n; i++, t += ST_TB) {
+        const Obj& o = g_top[i];
+        t[0] = o.judged; t[1] = o.res; t[2] = o.judgedAt; t[3] = o.tracking; t[4] = o.acceptAny; t[5] = o.headAction;
+        t[6] = o.totalRot; t[7] = o.atLast; t[8] = o.curMax; t[9] = o.completedSpins; t[10] = o.lastAngle;
+        t[11] = o.hasLastAngle; t[12] = o.ticksHit; t[13] = o.acceptAnyAfter; t[14] = o.hasAcceptAfter; t[15] = o.prevHeld;
+        t[16] = o.histAccum; t[17] = o.histAtLast; t[18] = o.histMax; t[19] = o.histLastReport;
+        t[20] = o.completedFullSpins; t[21] = o.spinLastAngle;
+    }
+    for (int i = 0; i < g_nest.n; i++, t += ST_NB) {
+        const Nest& n = g_nest[i];
+        t[0] = n.judged; t[1] = n.res; t[2] = n.judgedAt;
+    }
+    for (int i = 0; i < g_top.n; i++) {
+        const Obj& o = g_top[i];
+        if (o.kind != K_SPINNER) continue;
+        *t++ = o.spinTimes.n;
+        for (int k = 0; k < o.spinTimes.n; k++) *t++ = o.spinTimes[k];
+        *t++ = o.spinDirs.n;
+        for (int k = 0; k < o.spinDirs.n; k++) *t++ = o.spinDirs[k];
+    }
+    return len;
+}
+
+// Restores a state written by osu_state_save (for this same loaded map). 1 = ok.
+int osu_state_load(int length) {
+    if (!g_loaded || !g_stBuf || length < 3 + ST_G) return 0;
+    double* b = g_stBuf;
+    if ((int)b[0] != g_top.n || (int)b[1] != g_nest.n) return 0;
+    int var = (int)b[2];
+    if (length != 3 + ST_G + ST_TB * g_top.n + ST_NB * g_nest.n + var) return 0;
+    double* g = b + 3;
+    g_now = g[0]; g_mx = g[1]; g_my = g[2]; g_held = (int)g[3]; g_started = g[4] != 0; g_prevFrameT = g[5];
+    g_combo = (int)g[6]; g_highestCombo = (int)g[7]; g_curBase = g[8]; g_curMaxBase = g[9]; g_curComboPortion = g[10];
+    g_curBonus = g[11]; g_curAccCount = (int)g[12]; g_totalScore = g[13]; g_health = g[14]; g_failed = g[15] != 0;
+    g_judgedCount = (int)g[16]; g_comboResult = (int)g[17]; g_skipCount = (int)g[19];
+    for (int i = 0; i < 32; i++) g_resCount[i] = (int)g[20 + i];
+    double* t = g + ST_G;
+    for (int i = 0; i < g_top.n; i++, t += ST_TB) {
+        Obj& o = g_top[i];
+        o.judged = t[0] != 0; o.res = (int)t[1]; o.judgedAt = t[2]; o.tracking = t[3] != 0; o.acceptAny = t[4] != 0;
+        o.headAction = (int)t[5]; o.totalRot = t[6]; o.atLast = t[7]; o.curMax = t[8]; o.completedSpins = (int)t[9];
+        o.lastAngle = t[10]; o.hasLastAngle = t[11] != 0; o.ticksHit = (int)t[12]; o.acceptAnyAfter = t[13];
+        o.hasAcceptAfter = t[14] != 0; o.prevHeld = (int)t[15]; o.histAccum = (float)t[16]; o.histAtLast = (float)t[17];
+        o.histMax = (float)t[18]; o.histLastReport = t[19]; o.completedFullSpins = (int)t[20]; o.spinLastAngle = (float)t[21];
+    }
+    for (int i = 0; i < g_nest.n; i++, t += ST_NB) {
+        Nest& n = g_nest[i];
+        n.judged = t[0] != 0; n.res = (int)t[1]; n.judgedAt = t[2];
+    }
+    for (int i = 0; i < g_top.n; i++) {
+        Obj& o = g_top[i];
+        if (o.kind != K_SPINNER) continue;
+        int nt = (int)*t++;
+        o.spinTimes.clear();
+        for (int k = 0; k < nt; k++) o.spinTimes.push(*t++);
+        int nd = (int)*t++;
+        o.spinDirs.clear();
+        for (int k = 0; k < nd; k++) o.spinDirs.push((int)*t++);
+    }
+    scoreUpdate();
+    return 1;
+}
+
+// Fast forward: every object (and its nested objects) that starts before t and is not judged yet is skipped.
+void osu_skip_until(double t) {
+    if (!g_loaded) return;
+    for (int i = 0; i < g_top.n; i++) {
+        Obj& o = g_top[i];
+        if (o.time >= t) continue;
+        if (!o.judged) {
+            o.judged = true; o.res = RES_NONE; o.judgedAt = SKIPPED_AT; o.tracking = false;
+            g_skipCount++;
+        }
+        for (int k = 0; k < o.nestCount; k++) {
+            Nest& n = g_nest[o.nestBegin + k];
+            if (n.judged) continue;
+            n.judged = true; n.res = RES_NONE; n.judgedAt = SKIPPED_AT;
+            g_skipCount++;
+        }
+    }
+    if (t > g_now) g_now = t;
+    g_prevFrameT = t;
 }
 
 }  // extern "C"

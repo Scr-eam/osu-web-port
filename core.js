@@ -88,6 +88,32 @@ export class Core {
     this.X.osu_restart();
   }
 
+  // Practice (rewind / fast forward). False with an older core build that lacks it.
+  get canRewind() {
+    return typeof this.X.osu_state_save === "function";
+  }
+
+  // The judgement / score / health state as doubles (a copy).
+  saveState() {
+    const n = this.X.osu_state_save();
+    if (!n) return null;
+    const p = this.X.osu_state_buffer(n);
+    return new Float64Array(this.X.memory.buffer, p, n).slice();
+  }
+
+  // Restores a state from saveState (for the map that is loaded now). True when it was restored.
+  loadState(state) {
+    const p = this.X.osu_state_buffer(state.length);
+    if (!p) return false;
+    new Float64Array(this.X.memory.buffer, p, state.length).set(state);
+    return this.X.osu_state_load(state.length) === 1;
+  }
+
+  // Skips every unjudged object that starts before t: no result, no score, not drawn.
+  skipUntil(t) {
+    this.X.osu_skip_until(t);
+  }
+
   // Failure mods: bits from mods.js failBits (1 No Fail, 2 Sudden Death, 4 Perfect). Any time before a result.
   setMods(bits) {
     this.X.osu_set_mods(bits);
