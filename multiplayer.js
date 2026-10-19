@@ -683,8 +683,6 @@ export function createMultiplayer(api) {
       : `None of the matchmaking servers worked from here. (${results.join(" · ")})`, !good);
     btn.disabled = false;
   }
-  // the connection details and test are for troubleshooting: shown with ?mpdebug in the address
-  if (params.has("mpdebug")) $("#mpLogBox").hidden = false;
   onLog = () => { const pre = $("#mpLog"); if (pre) { pre.textContent = LOG.join("\n"); pre.scrollTop = pre.scrollHeight; } };
   onLog();
 
