@@ -21,6 +21,18 @@ const ICE = [
 const PREFIX = "osuwebport-";
 const CHUNK = 16 * 1024;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+// the connection log ("Connection details" on the multiplayer screen, and the console)
+const LOG = [];
+let onLog = null;
+const t0 = performance.now();
+function mpLog(msg) {
+  const line = `${((performance.now() - t0) / 1000).toFixed(1)}s  ${msg}`;
+  LOG.push(line);
+  if (LOG.length > 200) LOG.shift();
+  console.info("[multiplayer]", msg);
+  onLog?.();
+}
+const short = (id) => String(id || "").replace(PREFIX, "");
 const rand = (n, chars = "abcdefghijklmnopqrstuvwxyz0123456789") => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 
 // ---- the PeerJS server: a WebSocket that passes OFFER / ANSWER / CANDIDATE messages between peer ids ----
@@ -34,14 +46,16 @@ class Signal {
   open() {
     return new Promise((resolve, reject) => {
       let opened = false;
+      mpLog(`server: connecting as ${short(this.id)} to ${this.url.replace(/^wss?:\/\//, "")}`);
       const ws = new WebSocket(`${this.url}?key=peerjs&id=${encodeURIComponent(this.id)}&token=${rand(12)}&version=1.5.4`);
       this.ws = ws;
-      const fail = (msg) => { if (!opened) { opened = true; reject(new Error(msg)); try { ws.close(); } catch (_) {} } };
+      const fail = (msg) => { if (!opened) { opened = true; mpLog(`server: failed (${msg})`); reject(new Error(msg)); try { ws.close(); } catch (_) {} } };
       const timer = setTimeout(() => fail("The multiplayer server didn't answer. Check your connection and try again."), 12000);
       ws.onmessage = (e) => {
         let m;
         try { m = JSON.parse(e.data); } catch (_) { return; }
         if (m.type === "OPEN") {
+          mpLog(`server: connected as ${short(this.id)}`);
           opened = true;
           clearTimeout(timer);
           this.hb = setInterval(() => this.raw({ type: "HEARTBEAT" }), 5000);
@@ -53,15 +67,19 @@ class Signal {
           clearTimeout(timer);
           fail(m.payload?.msg || "The multiplayer server refused the connection.");
         } else {
+          if (m.type !== "CANDIDATE") mpLog(`server: got ${m.type}${m.src ? ` from ${short(m.src)}` : ""}${m.type === "ERROR" || m.type === "EXPIRE" ? ` ${JSON.stringify(m.payload || {})}` : ""}`);
           this.onmessage?.(m);
         }
       };
       ws.onerror = () => { clearTimeout(timer); fail("Couldn't reach the multiplayer server."); };
-      ws.onclose = () => { clearInterval(this.hb); if (opened) this.onclose?.(); else { clearTimeout(timer); fail("Couldn't reach the multiplayer server."); } };
+      ws.onclose = (e) => { clearInterval(this.hb); if (opened) { mpLog(`server: connection closed (code ${e.code})`); this.onclose?.(); } else { clearTimeout(timer); fail(`Couldn't reach the multiplayer server (code ${e.code}).`); } };
     });
   }
   raw(m) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(m)); }
-  send(type, dst, payload) { this.raw({ type, dst, payload }); }
+  send(type, dst, payload) {
+    if (type !== "CANDIDATE") mpLog(`server: sending ${type} to ${short(dst)}${this.ws?.readyState === 1 ? "" : " (NOT CONNECTED)"}`);
+    this.raw({ type, dst, payload });
+  }
   close() { clearInterval(this.hb); this.onclose = null; try { this.ws?.close(); } catch (_) {} }
 }
 
@@ -90,8 +108,10 @@ class Link {
     };
     pc.oniceconnectionstatechange = () => {
       this.diag.ice = pc.iceConnectionState;
-      console.info("[multiplayer]", remote, "ICE", pc.iceConnectionState, JSON.stringify(this.diag));
+      const r = (o) => `${o.host} local, ${o.srflx} internet, ${o.relay} relay`;
+      mpLog(`direct link to ${short(remote)}: ${pc.iceConnectionState} (my routes: ${r(this.diag.mine)}; theirs: ${r(this.diag.theirs)})`);
     };
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") mpLog(`finished finding routes: ${this.diag.mine.host} local, ${this.diag.mine.srflx} internet, ${this.diag.mine.relay} relay`); };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed" || pc.connectionState === "closed") this.close();
     };
@@ -110,7 +130,7 @@ class Link {
     this.dc = dc;
     dc.binaryType = "arraybuffer";
     dc.bufferedAmountLowThreshold = 256 * 1024;
-    const opened = () => { if (this.opened) return; this.opened = true; console.info("[multiplayer] connected to", this.remote); this.h.open?.(this); };
+    const opened = () => { if (this.opened) return; this.opened = true; mpLog(`data channel to ${short(this.remote)} is open`); this.h.open?.(this); };
     dc.onopen = opened;
     if (dc.readyState === "open") queueMicrotask(opened);
     dc.onmessage = (e) => {
@@ -143,7 +163,7 @@ class Link {
         if (pc.remoteDescription) await pc.addIceCandidate(c).catch(() => {});
         else this.pending.push(c);
       }
-    } catch (_) { /* a broken offer: the connection times out */ }
+    } catch (err) { mpLog(`error handling ${m.type}: ${err.message}`); }
   }
   flush() { for (const c of this.pending.splice(0)) this.pc.addIceCandidate(c).catch(() => {}); }
   get ready() { return this.dc?.readyState === "open"; }
@@ -492,7 +512,48 @@ export function createMultiplayer(api) {
     }
   }
 
+  // ---- connection test: two connections inside this page find each other through the real server ----
+  async function selfTest() {
+    const btn = $("#mpTest");
+    btn.disabled = true;
+    $("#mpLogBox").open = true;
+    mpLog("--- connection test ---");
+    status("Testing the connection…");
+    const a = new Signal(PREFIX + "t-" + rand(10), server), b = new Signal(PREFIX + "t-" + rand(10), server);
+    const links = [];
+    const done = (msg, err) => {
+      mpLog(`test result: ${msg}`);
+      status(msg, err);
+      for (const l of links) { l.h.close = null; l.close(); }
+      a.close(); b.close();
+      btn.disabled = false;
+    };
+    try { await a.open(); await b.open(); } catch (err) { done(`Step 1 failed: couldn't connect to the multiplayer server (${err.message}).`, true); return; }
+    let got = false;
+    b.onmessage = (m) => {
+      if (!m.src) return;
+      if (m.type === "OFFER" && !links[1]) { got = true; links[1] = new Link(b, m.src, false, {}); }
+      links[1]?.onSignal(m);
+    };
+    a.onmessage = (m) => { if (m.src === b.id) links[0]?.onSignal(m); };
+    const ok = await new Promise((res) => {
+      links[0] = new Link(a, b.id, true, { open: () => res(true), close: () => res(false) });
+      setTimeout(() => res(false), 20000);
+    });
+    if (ok) done("Test passed: the server and direct connections both work in this browser.", false);
+    else if (!got) done("Step 2 failed: the server connected but didn't pass messages along. The free PeerJS server may be having problems.", true);
+    else if (!links[0].diag.answered) done("Step 3 failed: the answer didn't come back through the server.", true);
+    else done(`Step 4 failed: the server works, but the direct link didn't open (ICE ${links[0].diag.ice}). A firewall or browser setting may be blocking WebRTC.`, true);
+  }
+  onLog = () => { const pre = $("#mpLog"); if (pre) { pre.textContent = LOG.join("\n"); pre.scrollTop = pre.scrollHeight; } };
+  onLog();
+
   // ---- controls ----
+  $("#mpTest").onclick = () => selfTest();
+  $("#mpLogCopy").onclick = async () => {
+    try { await navigator.clipboard.writeText(LOG.join("\n")); $("#mpLogCopy").textContent = "Copied!"; } catch (_) { prompt("Copy this:", LOG.join("\n")); }
+    setTimeout(() => { $("#mpLogCopy").textContent = "Copy details"; }, 1500);
+  };
   $("#mpName").oninput = (e) => { name = e.target.value.slice(0, 24) || "Player"; store.set("osuweb.mpName", name); };
   $("#mpCreate").onclick = () => createRoom();
   $("#mpJoinBtn").onclick = () => joinRoom($("#mpJoinCode").value);
