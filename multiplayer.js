@@ -14,7 +14,8 @@
 
 const SERVER = "wss://0.peerjs.com:443/peerjs";
 const ICE = [
-  { urls: "stun:stun.l.google.com:19302" },
+  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
+  { urls: "stun:stun.cloudflare.com:3478" },
   { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" },
 ];
 const PREFIX = "osuwebport-";
@@ -73,10 +74,23 @@ class Link {
     this.cid = initiator ? "dc_" + rand(10) : null;
     this.pending = [];              // ICE candidates that came before the remote description
     this.closed = false;
+    this.opened = false;
+    // what happened, for the error message if it doesn't connect: did the other side answer, how far ICE got,
+    // and which kinds of route each side found (host = same network, srflx = through the router, relay = TURN)
+    this.diag = { answered: false, ice: "new", mine: { host: 0, srflx: 0, relay: 0 }, theirs: { host: 0, srflx: 0, relay: 0 } };
     const pc = new RTCPeerConnection({ iceServers: ICE });
     this.pc = pc;
+    const kind = (c) => (/ typ (host|srflx|relay|prflx)/.exec(c?.candidate || "") || [])[1];
+    this.kind = kind;
     pc.onicecandidate = (e) => {
-      if (e.candidate) signal.send("CANDIDATE", remote, { candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate, connectionId: this.cid, type: "data" });
+      if (!e.candidate) return;
+      const k = kind(e.candidate);
+      if (k in this.diag.mine) this.diag.mine[k]++;
+      signal.send("CANDIDATE", remote, { candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate, connectionId: this.cid, type: "data" });
+    };
+    pc.oniceconnectionstatechange = () => {
+      this.diag.ice = pc.iceConnectionState;
+      console.info("[multiplayer]", remote, "ICE", pc.iceConnectionState, JSON.stringify(this.diag));
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed" || pc.connectionState === "closed") this.close();
@@ -96,7 +110,9 @@ class Link {
     this.dc = dc;
     dc.binaryType = "arraybuffer";
     dc.bufferedAmountLowThreshold = 256 * 1024;
-    dc.onopen = () => this.h.open?.(this);
+    const opened = () => { if (this.opened) return; this.opened = true; console.info("[multiplayer] connected to", this.remote); this.h.open?.(this); };
+    dc.onopen = opened;
+    if (dc.readyState === "open") queueMicrotask(opened);
     dc.onmessage = (e) => {
       if (typeof e.data === "string") {
         let m;
@@ -116,10 +132,14 @@ class Link {
         this.signal.send("ANSWER", this.remote, { sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription, type: "data", connectionId: this.cid });
         this.flush();
       } else if (m.type === "ANSWER") {
+        this.diag.answered = true;
+        this.h.answered?.(this);
         await pc.setRemoteDescription(m.payload.sdp);
         this.flush();
       } else if (m.type === "CANDIDATE") {
         const c = m.payload.candidate;
+        const k = this.kind(c);
+        if (k in this.diag.theirs) this.diag.theirs[k]++;
         if (pc.remoteDescription) await pc.addIceCandidate(c).catch(() => {});
         else this.pending.push(c);
       }
@@ -282,12 +302,20 @@ export function createMultiplayer(api) {
     try { await signal.open(); } catch (err) { status(err.message, true); return; }
     const hostId = PREFIX + code;
     room = { code, host: false, signal, links: new Map(), players: new Map(), map: null, phase: "lobby", me: null };
-    const timer = setTimeout(() => { if (room && !room.me) { status(`Couldn't connect to room ${code}. Check the code, or the host's or your network may block direct connections.`, true); leave(true); } }, 15000);
+    const why = (l) => {
+      const d = l?.diag;
+      if (!d || !d.answered) return `The host's tab didn't answer. Make sure room ${code} is still open in the host's tab (and that tab isn't asleep), then try again.`;
+      const routes = (o) => [o.host && "local", o.srflx && "internet", o.relay && "relay"].filter(Boolean).join(" + ") || "none";
+      return `Found the host, but a direct connection couldn't be made (a firewall or network is blocking it). `
+        + `Details: ICE ${d.ice}; your routes: ${routes(d.mine)}; host's routes: ${routes(d.theirs)}.`;
+    };
+    const timer = setTimeout(() => { if (room && !room.me) { status(why(room.links.get(hostId)), true); leave(true); } }, 25000);
     const link = new Link(signal, hostId, true, {
+      answered: () => status(`Found room ${code}, connecting…`),
       open: (l) => { clearTimeout(timer); l.send({ t: "hello", name }); status(""); history.replaceState(null, "", `?room=${code}`); },
       message: (l, m) => guestMessage(l, m),
       binary: (l, buf) => { if (incoming) { incoming.parts.push(buf); incoming.got += buf.byteLength; reportHave(); } },
-      close: () => { if (room?.links.get(hostId) === link) { clearTimeout(timer); const was = !!room.me; leave(true); status(was ? "The host closed the room." : `Couldn't connect to room ${code}.`, true); } },
+      close: () => { if (room?.links.get(hostId) === link) { clearTimeout(timer); const was = !!room.me; leave(true); status(was ? "The host closed the room." : why(link), true); } },
     });
     room.links.set(hostId, link);
     signal.onmessage = (m) => {
