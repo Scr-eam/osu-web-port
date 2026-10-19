@@ -1,18 +1,29 @@
 // Multiplayer: rooms of players who play the same map at the same time and see each other's scores live.
 //
 // The site is static (GitHub Pages), so there is no game server. Players connect to each other directly over
-// WebRTC data channels; the free PeerJS cloud server (0.peerjs.com) only introduces them (it relays the WebRTC
-// offer / answer / ICE messages, using PeerJS's server protocol). The host's browser runs the room: everyone
-// connects to the host, and the host passes the room's state, chat and scores on to everyone.
+// WebRTC data channels, and public matchmaking servers only introduce them: they pass one "offer" and one "answer"
+// between the two browsers, each holding every network route that browser found (no trickled candidates).
+// Two kinds of matchmaking server are used at once, so one being down doesn't stop anyone:
+//   * the free PeerJS cloud server (0.peerjs.com), where the host registers as "osuwebport-<code>";
+//   * public WebTorrent trackers, where the room is a "torrent" (a hash of the code) that the host joins and a
+//     joining player sends offers into.
+// The host listens on all of them; a joining player tries all of them at once and keeps the first connection that
+// opens. The host's browser runs the room: everyone connects to the host, and the host passes the room's state,
+// chat and scores on to everyone.
 //
-// A room is a 5-letter code; its host registers as "osuwebport-<code>" on the PeerJS server. Joining means
-// connecting to that id. The host picks the map; a player without it gets it sent by the host over the data
-// channel and saved like an imported map. When everyone is ready, the host starts the round: each player plays it
-// on their own clock and reports score, combo, accuracy and misses a few times a second.
+// The host picks the map; a player without it gets it sent by the host over the data channel and saved like an
+// imported map. When everyone is ready, the host starts the round: each player plays it on their own clock and
+// reports score, combo, accuracy and misses a few times a second.
 //
 // createMultiplayer(api) wires it into the page; api is described where index.html calls it.
 
-const SERVER = "wss://0.peerjs.com:443/peerjs";
+const PEERJS = "wss://0.peerjs.com:443/peerjs";
+const TRACKERS = [
+  "wss://tracker.openwebtorrent.com",
+  "wss://tracker.webtorrent.dev",
+  "wss://tracker.btorrent.xyz",
+  "wss://tracker.files.fm:7073/announce",
+];
 const ICE = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
   { urls: "stun:stun.cloudflare.com:3478" },
@@ -28,111 +39,179 @@ const t0 = performance.now();
 function mpLog(msg) {
   const line = `${((performance.now() - t0) / 1000).toFixed(1)}s  ${msg}`;
   LOG.push(line);
-  if (LOG.length > 200) LOG.shift();
+  if (LOG.length > 300) LOG.shift();
   console.info("[multiplayer]", msg);
   onLog?.();
 }
 const short = (id) => String(id || "").replace(PREFIX, "");
+const hostOf = (url) => { try { return new URL(url.replace(/^ws/, "http")).hostname; } catch (_) { return url; } };
 const rand = (n, chars = "abcdefghijklmnopqrstuvwxyz0123456789") => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+// the room's "torrent" on the trackers: 20 hex characters of SHA-1("osuwebport/<code>")
+async function roomHash(code) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`osuwebport/${code}`)));
+  return [...d.slice(0, 10)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// counts the kinds of route in an SDP (host = same network, srflx = through the router, relay = TURN)
+function countRoutes(sdp, into) {
+  for (const m of String(sdp || "").matchAll(/ typ (host|srflx|relay|prflx)/g)) if (m[1] in into) into[m[1]]++;
+  return into;
+}
+const routesText = (o) => `${o.host} local, ${o.srflx} internet, ${o.relay} relay`;
+// waits until the browser has found its routes (or ms passed), so the offer / answer carries them all
+function gathered(pc, ms = 3500) {
+  return new Promise((res) => {
+    if (pc.iceGatheringState === "complete") return res();
+    const t = setTimeout(res, ms);
+    pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); } });
+  });
+}
+const descOf = (pc) => ({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
 
-// ---- the PeerJS server: a WebSocket that passes OFFER / ANSWER / CANDIDATE messages between peer ids ----
+// ---- the PeerJS server: a WebSocket that passes OFFER / ANSWER messages between peer ids ----
 class Signal {
   constructor(id, url) {
     this.id = id;
     this.url = url;
+    this.name = "PeerJS";
     this.onmessage = null;
     this.onclose = null;
   }
   open() {
     return new Promise((resolve, reject) => {
       let opened = false;
-      mpLog(`server: connecting as ${short(this.id)} to ${this.url.replace(/^wss?:\/\//, "")}`);
+      mpLog(`PeerJS: connecting as ${short(this.id)}`);
       const ws = new WebSocket(`${this.url}?key=peerjs&id=${encodeURIComponent(this.id)}&token=${rand(12)}&version=1.5.4`);
       this.ws = ws;
-      const fail = (msg) => { if (!opened) { opened = true; mpLog(`server: failed (${msg})`); reject(new Error(msg)); try { ws.close(); } catch (_) {} } };
-      const timer = setTimeout(() => fail("The multiplayer server didn't answer. Check your connection and try again."), 12000);
+      const fail = (msg) => { if (!opened) { opened = true; mpLog(`PeerJS: failed (${msg})`); reject(new Error(msg)); try { ws.close(); } catch (_) {} } };
+      const timer = setTimeout(() => fail("no answer"), 9000);
       ws.onmessage = (e) => {
         let m;
         try { m = JSON.parse(e.data); } catch (_) { return; }
         if (m.type === "OPEN") {
-          mpLog(`server: connected as ${short(this.id)}`);
+          mpLog(`PeerJS: connected as ${short(this.id)}`);
           opened = true;
           clearTimeout(timer);
           this.hb = setInterval(() => this.raw({ type: "HEARTBEAT" }), 5000);
           resolve();
         } else if (m.type === "ID-TAKEN") {
           clearTimeout(timer);
-          mpLog(`server: says ID-TAKEN for ${short(this.id)}`);
+          mpLog(`PeerJS: ID-TAKEN for ${short(this.id)}`);
           if (!opened) { opened = true; reject(Object.assign(new Error("id-taken"), { taken: true })); }
         } else if (m.type === "ERROR") {
           clearTimeout(timer);
-          mpLog(`server: ERROR ${JSON.stringify(m.payload || {})}`);
-          fail(m.payload?.msg || "The multiplayer server refused the connection.");
+          mpLog(`PeerJS: ERROR ${JSON.stringify(m.payload || {})}`);
+          fail(m.payload?.msg || "refused");
         } else {
-          if (m.type !== "CANDIDATE") mpLog(`server: got ${m.type}${m.src ? ` from ${short(m.src)}` : ""}${m.type === "ERROR" || m.type === "EXPIRE" ? ` ${JSON.stringify(m.payload || {})}` : ""}`);
+          mpLog(`PeerJS: got ${m.type}${m.src ? ` from ${short(m.src)}` : ""}`);
           this.onmessage?.(m);
         }
       };
-      ws.onerror = () => { clearTimeout(timer); fail("Couldn't reach the multiplayer server."); };
-      ws.onclose = (e) => { clearInterval(this.hb); if (opened) { mpLog(`server: connection closed ${this.closing ? "by this page" : `BY THE SERVER (code ${e.code}${e.reason ? `, ${e.reason}` : ""})`}`); this.onclose?.(); } else { clearTimeout(timer); fail(`Couldn't reach the multiplayer server (code ${e.code}).`); } };
+      ws.onerror = () => { clearTimeout(timer); fail("couldn't reach it"); };
+      ws.onclose = (e) => { clearInterval(this.hb); if (opened) { if (!this.closing) mpLog(`PeerJS: connection closed by the server (code ${e.code}${e.reason ? `, ${e.reason}` : ""})`); this.onclose?.(); } else { clearTimeout(timer); fail(`closed, code ${e.code}`); } };
     });
   }
   raw(m) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(m)); }
   send(type, dst, payload) {
-    if (type !== "CANDIDATE") mpLog(`server: sending ${type} to ${short(dst)}${this.ws?.readyState === 1 ? "" : " (NOT CONNECTED)"}`);
+    mpLog(`PeerJS: sending ${type} to ${short(dst)}${this.ws?.readyState === 1 ? "" : " (NOT CONNECTED)"}`);
     this.raw({ type, dst, payload });
   }
   close() { clearInterval(this.hb); this.onclose = null; this.closing = true; try { this.ws?.close(); } catch (_) {} }
 }
 
+// ---- a WebTorrent tracker: announces into a "torrent", passes offers and answers between its peers ----
+class Tracker {
+  constructor(url) {
+    this.url = url;
+    this.name = hostOf(url);
+    this.onOffer = null;
+    this.onAnswer = null;
+  }
+  open() {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      mpLog(`tracker ${this.name}: connecting`);
+      let ws;
+      try { ws = new WebSocket(this.url); } catch (err) { reject(err); return; }
+      this.ws = ws;
+      const timer = setTimeout(() => { if (!done) { done = true; mpLog(`tracker ${this.name}: no answer`); try { ws.close(); } catch (_) {} reject(new Error("timeout")); } }, 8000);
+      ws.onopen = () => { if (done) return; done = true; clearTimeout(timer); mpLog(`tracker ${this.name}: connected`); resolve(); };
+      ws.onerror = () => { if (!done) { done = true; clearTimeout(timer); mpLog(`tracker ${this.name}: couldn't reach it`); reject(new Error("unreachable")); } };
+      ws.onclose = (e) => { clearInterval(this.keep); if (done && !this.closing) mpLog(`tracker ${this.name}: connection closed (code ${e.code})`); };
+      ws.onmessage = (e) => {
+        let m;
+        try { m = JSON.parse(e.data); } catch (_) { return; }
+        if (m["failure reason"] || m.failure_reason) { mpLog(`tracker ${this.name}: error "${m["failure reason"] || m.failure_reason}"`); return; }
+        if (m.offer && m.offer_id) { mpLog(`tracker ${this.name}: got an offer`); this.onOffer?.(m.peer_id, m.offer, m.offer_id); }
+        else if (m.answer && m.offer_id) { mpLog(`tracker ${this.name}: got an answer`); this.onAnswer?.(m.peer_id, m.answer, m.offer_id); }
+      };
+    });
+  }
+  raw(m) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(m)); }
+  announce(hash, peerId, offers = []) {
+    this.raw({ action: "announce", info_hash: hash, peer_id: peerId, numwant: Math.max(1, offers.length), uploaded: 0, downloaded: 0, left: 1, event: this.started ? undefined : "started", offers });
+    this.started = true;
+  }
+  // stays in the torrent: trackers drop peers that don't announce again
+  keepAnnouncing(hash, peerId) { clearInterval(this.keep); this.announce(hash, peerId); this.keep = setInterval(() => this.announce(hash, peerId), 40000); }
+  answer(hash, peerId, toPeer, offerId, answer) {
+    mpLog(`tracker ${this.name}: sending an answer`);
+    this.raw({ action: "announce", info_hash: hash, peer_id: peerId, to_peer_id: toPeer, offer_id: offerId, answer });
+  }
+  close() { clearInterval(this.keep); this.closing = true; try { this.ws?.close(); } catch (_) {} }
+}
+
 // ---- one WebRTC connection to another player, with one ordered, reliable data channel ----
 class Link {
-  constructor(signal, remote, initiator, handlers) {
-    this.signal = signal;
+  constructor(remote, initiator, handlers, via = "") {
     this.remote = remote;
-    this.h = handlers;              // { open, message, close }
-    this.cid = initiator ? "dc_" + rand(10) : null;
-    this.pending = [];              // ICE candidates that came before the remote description
+    this.via = via;
+    this.h = handlers;              // { open, message, binary, answered, close }
     this.closed = false;
     this.opened = false;
-    // what happened, for the error message if it doesn't connect: did the other side answer, how far ICE got,
-    // and which kinds of route each side found (host = same network, srflx = through the router, relay = TURN)
+    // for the log and the error message: did the other side answer, how far ICE got, which routes each side has
     this.diag = { answered: false, ice: "new", mine: { host: 0, srflx: 0, relay: 0 }, theirs: { host: 0, srflx: 0, relay: 0 } };
     const pc = new RTCPeerConnection({ iceServers: ICE });
     this.pc = pc;
-    const kind = (c) => (/ typ (host|srflx|relay|prflx)/.exec(c?.candidate || "") || [])[1];
-    this.kind = kind;
-    pc.onicecandidate = (e) => {
-      if (!e.candidate) return;
-      const k = kind(e.candidate);
-      if (k in this.diag.mine) this.diag.mine[k]++;
-      signal.send("CANDIDATE", remote, { candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate, connectionId: this.cid, type: "data" });
-    };
     pc.oniceconnectionstatechange = () => {
       this.diag.ice = pc.iceConnectionState;
-      const r = (o) => `${o.host} local, ${o.srflx} internet, ${o.relay} relay`;
-      mpLog(`direct link to ${short(remote)}: ${pc.iceConnectionState} (my routes: ${r(this.diag.mine)}; theirs: ${r(this.diag.theirs)})`);
+      mpLog(`direct link (${via}): ${pc.iceConnectionState}`);
     };
-    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") mpLog(`finished finding routes: ${this.diag.mine.host} local, ${this.diag.mine.srflx} internet, ${this.diag.mine.relay} relay`); };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed" || pc.connectionState === "closed") this.close(`connection ${pc.connectionState}`);
     };
     pc.ondatachannel = (e) => this.useChannel(e.channel);
-    if (initiator) {
-      this.useChannel(pc.createDataChannel("osu", { ordered: true }));
-      (async () => {
-        try {
-          await pc.setLocalDescription(await pc.createOffer());
-          signal.send("OFFER", remote, { sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription, type: "data", connectionId: this.cid, serialization: "raw", reliable: true });
-        } catch (err) { this.close(`couldn't make an offer: ${err.message}`); }
-      })();
-    }
+    if (initiator) this.useChannel(pc.createDataChannel("osu", { ordered: true }));
+  }
+  async offer() {
+    await this.pc.setLocalDescription(await this.pc.createOffer());
+    await gathered(this.pc);
+    const d = descOf(this.pc);
+    countRoutes(d.sdp, this.diag.mine);
+    return d;
+  }
+  async answerTo(desc) {
+    countRoutes(desc.sdp, this.diag.theirs);
+    await this.pc.setRemoteDescription(desc);
+    await this.pc.setLocalDescription(await this.pc.createAnswer());
+    await gathered(this.pc);
+    const d = descOf(this.pc);
+    countRoutes(d.sdp, this.diag.mine);
+    mpLog(`answering (${this.via}): my routes ${routesText(this.diag.mine)}; theirs ${routesText(this.diag.theirs)}`);
+    return d;
+  }
+  async accept(desc) {
+    if (this.diag.answered || this.closed) return;
+    this.diag.answered = true;
+    countRoutes(desc.sdp, this.diag.theirs);
+    mpLog(`got an answer (${this.via}): my routes ${routesText(this.diag.mine)}; theirs ${routesText(this.diag.theirs)}`);
+    this.h.answered?.(this);
+    try { await this.pc.setRemoteDescription(desc); } catch (err) { mpLog(`bad answer (${this.via}): ${err.message}`); }
   }
   useChannel(dc) {
     this.dc = dc;
     dc.binaryType = "arraybuffer";
     dc.bufferedAmountLowThreshold = 256 * 1024;
-    const opened = () => { if (this.opened) return; this.opened = true; mpLog(`data channel to ${short(this.remote)} is open`); this.h.open?.(this); };
+    const opened = () => { if (this.opened || this.closed) return; this.opened = true; mpLog(`connected (${this.via})`); this.h.open?.(this); };
     dc.onopen = opened;
     if (dc.readyState === "open") queueMicrotask(opened);
     dc.onmessage = (e) => {
@@ -144,30 +223,6 @@ class Link {
     };
     dc.onclose = () => this.close("data channel closed");
   }
-  async onSignal(m) {
-    const pc = this.pc;
-    try {
-      if (m.type === "OFFER") {
-        this.cid = m.payload.connectionId;
-        await pc.setRemoteDescription(m.payload.sdp);
-        await pc.setLocalDescription(await pc.createAnswer());
-        this.signal.send("ANSWER", this.remote, { sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription, type: "data", connectionId: this.cid });
-        this.flush();
-      } else if (m.type === "ANSWER") {
-        this.diag.answered = true;
-        this.h.answered?.(this);
-        await pc.setRemoteDescription(m.payload.sdp);
-        this.flush();
-      } else if (m.type === "CANDIDATE") {
-        const c = m.payload.candidate;
-        const k = this.kind(c);
-        if (k in this.diag.theirs) this.diag.theirs[k]++;
-        if (pc.remoteDescription) await pc.addIceCandidate(c).catch(() => {});
-        else this.pending.push(c);
-      }
-    } catch (err) { mpLog(`error handling ${m.type}: ${err.message}`); }
-  }
-  flush() { for (const c of this.pending.splice(0)) this.pc.addIceCandidate(c).catch(() => {}); }
   get ready() { return this.dc?.readyState === "open"; }
   send(m) { if (this.ready) this.dc.send(JSON.stringify(m)); }
   async sendBinary(buf) {
@@ -181,7 +236,7 @@ class Link {
   close(why = "") {
     if (this.closed) return;
     this.closed = true;
-    mpLog(`direct link to ${short(this.remote)} closed${why ? ` (${why})` : ""}`);
+    if (this.opened || why !== "another route won") mpLog(`direct link (${this.via}) closed${why ? `: ${why}` : ""}`);
     try { this.dc?.close(); } catch (_) {}
     try { this.pc.close(); } catch (_) {}
     this.h.close?.(this);
@@ -196,10 +251,12 @@ export function createMultiplayer(api) {
     set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
   };
   const params = new URLSearchParams(location.search);
-  const server = params.get("peerserver") || SERVER;   // a local PeerJS-compatible server, for testing
+  // matchmaking servers; ?peerserver= and ?trackers= swap in local ones for testing ("off" leaves one kind out)
+  const server = params.get("peerserver") === "off" ? null : params.get("peerserver") || PEERJS;
+  const trackers = params.get("trackers") === "off" ? [] : params.get("trackers") ? params.get("trackers").split(",") : TRACKERS;
   let name = store.get("osuweb.mpName", "") || `Player${Math.floor(1000 + Math.random() * 9000)}`;
 
-  let room = null;     // { code, host, signal, links: Map, players: Map, map, phase, me }
+  let room = null;     // { code, host, signals (matchmaking connections), links: Map (host), hostLink (guest), players: Map, map, phase, me }
   let inRound = false;
   let roundDone = false;   // this player's final score has gone out; no more live updates this round
   let lastLive = 0;
@@ -264,49 +321,68 @@ export function createMultiplayer(api) {
   }
   async function createRoom() {
     leave(true);
-    for (let tries = 0; tries < 4; tries++) {
-      const code = rand(5, CODE_CHARS);
-      const signal = new Signal(PREFIX + code, server);
-      status("Creating a room…");
-      try {
-        await signal.open();
-      } catch (err) {
-        if (err.taken) continue;
-        status(err.message, true);
-        return;
+    status("Creating a room…");
+    // a code that is free on PeerJS (when PeerJS is reachable at all)
+    let code = null, sig = null;
+    if (server) {
+      for (let tries = 0; tries < 4 && !sig; tries++) {
+        code = rand(5, CODE_CHARS);
+        const s = new Signal(PREFIX + code, server);
+        try { await s.open(); sig = s; } catch (err) { if (!err.taken) break; }
       }
-      room = { code, host: true, signal, links: new Map(), players: new Map(), map: null, phase: "lobby", me: "host" };
-      room.players.set("host", { id: "host", name, host: true, ready: true, hasMap: false, dl: null, live: null });
-      signal.onmessage = (m) => {
-        if (!m.src) return;
-        let link = room.links.get(m.src);
-        if (m.type === "OFFER" && !link) {
-          link = new Link(signal, m.src, false, {
-            open: (l) => {
-              room.players.set(l.remote, { id: l.remote, name: "Player", host: false, ready: false, hasMap: false, dl: null, live: null });
-              broadcast(true);
-            },
-            message: hostMessage,
-            close: (l) => {
-              room?.links.delete(l.remote);
-              const p = room?.players.get(l.remote);
-              if (p) { room.players.delete(l.remote); chat(null, `${p.name} left`, true); broadcast(true); checkRoundOver(); }
-            },
-          });
-          room.links.set(m.src, link);
-        }
-        link?.onSignal(m);
-      };
-      signal.onclose = () => { if (room?.signal === signal) status("Lost the multiplayer server: no one new can join until you make a new room.", true); };
-      const sel = api.selection();
-      if (sel?.name) setMap(sel);
-      status("");
-      history.replaceState(null, "", `?room=${code}`);
-      render();
-      broadcast(true);
-      return;
     }
-    status("Couldn't get a room code. Try again.", true);
+    code = code || rand(5, CODE_CHARS);
+    const r = { code, host: true, signals: [], links: new Map(), players: new Map(), map: null, phase: "lobby", me: "host" };
+    room = r;
+    r.players.set("host", { id: "host", name, host: true, ready: true, hasMap: false, dl: null, live: null });
+    // an offer from a joining player, by any route: answered once per player
+    const accept = (guest, desc, reply, via) => {
+      if (room !== r) return;
+      if (r.links.has(guest)) { mpLog(`already connecting to ${guest.slice(0, 6)}: ignoring its offer via ${via}`); return; }
+      const link = new Link(guest, false, {
+        open: (l) => {
+          r.players.set(l.remote, { id: l.remote, name: "Player", host: false, ready: false, hasMap: false, dl: null, live: null });
+          broadcast(true);
+        },
+        message: hostMessage,
+        close: (l) => {
+          r.links.delete(l.remote);
+          const p = r.players.get(l.remote);
+          if (p && room === r) { r.players.delete(l.remote); chat(null, `${p.name} left`, true); broadcast(true); checkRoundOver(); }
+        },
+      }, via);
+      r.links.set(guest, link);
+      link.answerTo(desc).then(reply).catch((err) => { mpLog(`couldn't answer (${via}): ${err.message}`); link.close("bad offer"); });
+    };
+    if (sig) {
+      r.signals.push(sig);
+      sig.onmessage = (m) => {
+        if (m.type === "OFFER" && m.src) {
+          accept(m.src.replace(PREFIX + "p-", ""), m.payload.sdp, (ans) => sig.send("ANSWER", m.src, { sdp: ans, type: "data", connectionId: m.payload.connectionId }), "PeerJS");
+        }
+      };
+    }
+    const hash = await roomHash(code);
+    const me = rand(20);
+    const up = await Promise.all(trackers.map(async (url) => {
+      const tr = new Tracker(url);
+      try { await tr.open(); } catch (_) { return false; }
+      if (room !== r) { tr.close(); return false; }
+      r.signals.push(tr);
+      tr.onOffer = (from, offer, offerId) => accept(from, offer, (ans) => tr.answer(hash, me, from, offerId, ans), tr.name);
+      tr.keepAnnouncing(hash, me);
+      return true;
+    }));
+    if (room !== r) return;
+    const nTr = up.filter(Boolean).length;
+    mpLog(`room ${code} is open on: ${[sig && "PeerJS", nTr && `${nTr} of ${trackers.length} trackers`].filter(Boolean).join(" and ") || "nothing"}`);
+    if (!sig && !nTr) { leave(true); status("Couldn't reach any matchmaking server, so no one could join. Check your connection, then try again.", true); return; }
+    const sel = api.selection();
+    if (sel?.name) setMap(sel);
+    status("");
+    history.replaceState(null, "", `?room=${code}`);
+    render();
+    broadcast(true);
   }
   function setMap(sel) {
     room.map = sel ? { name: sel.name, diffName: sel.diffName, diffIndex: sel.diffIndex, mods: sel.mods.filter((m) => m !== "AP"), title: sel.title, artist: sel.artist } : null;
@@ -320,34 +396,80 @@ export function createMultiplayer(api) {
     code = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (code.length < 4) { status("Type the room's code first.", true); return; }
     leave(true);
-    const signal = new Signal(PREFIX + "p-" + rand(12), server);
-    status(`Joining ${code}…`);
-    try { await signal.open(); } catch (err) { status(err.message, true); return; }
+    const token = rand(20);
     const hostId = PREFIX + code;
-    room = { code, host: false, signal, links: new Map(), players: new Map(), map: null, phase: "lobby", me: null };
-    const why = (l) => {
-      const d = l?.diag;
-      if (!d || !d.answered) return `The host's tab didn't answer. Make sure room ${code} is still open in the host's tab (and that tab isn't asleep), then try again.`;
-      const routes = (o) => [o.host && "local", o.srflx && "internet", o.relay && "relay"].filter(Boolean).join(" + ") || "none";
-      return `Found the host, but a direct connection couldn't be made (a firewall or network is blocking it). `
-        + `Details: ICE ${d.ice}; your routes: ${routes(d.mine)}; host's routes: ${routes(d.theirs)}.`;
+    const r = { code, host: false, signals: [], links: new Map(), hostLink: null, players: new Map(), map: null, phase: "lobby", me: null };
+    room = r;
+    status(`Joining ${code}…`);
+    const attempts = [];
+    let reached = 0;           // matchmaking servers reached
+    const live = () => room === r && !r.hostLink;
+    // the first route to open wins; the others are dropped
+    const win = (l) => {
+      if (!live()) { l.h.close = null; l.close("another route won"); return; }
+      r.hostLink = l;
+      clearTimeout(timer);
+      mpLog(`joined room ${code} via ${l.via}`);
+      for (const o of attempts) if (o !== l) { o.h.close = null; o.close("another route won"); }
+      for (const s of r.signals) s.close();
+      r.signals = [];
+      l.send({ t: "hello", name });
+      status("");
+      history.replaceState(null, "", `?room=${code}`);
     };
-    const timer = setTimeout(() => { if (room && !room.me) { status(why(room.links.get(hostId)), true); leave(true); } }, 25000);
-    const link = new Link(signal, hostId, true, {
-      answered: () => status(`Found room ${code}, connecting…`),
-      open: (l) => { clearTimeout(timer); l.send({ t: "hello", name }); status(""); history.replaceState(null, "", `?room=${code}`); },
-      message: (l, m) => guestMessage(l, m),
-      binary: (l, buf) => { if (incoming) { incoming.parts.push(buf); incoming.got += buf.byteLength; reportHave(); } },
-      close: () => { if (room?.links.get(hostId) === link) { clearTimeout(timer); const was = !!room.me; leave(true); status(was ? "The host closed the room." : why(link), true); } },
-    });
-    room.links.set(hostId, link);
-    signal.onmessage = (m) => {
-      if (m.type === "EXPIRE" || m.type === "LEAVE") { if (!room?.me) { clearTimeout(timer); leave(true); status(`Room ${code} wasn't found. Check the code.`, true); } return; }
-      if (m.src === hostId) link.onSignal(m);
+    const attempt = (via) => {
+      const l = new Link("host", true, {
+        answered: () => { if (live()) status(`Found room ${code}, connecting…`); },
+        open: win,
+        message: (l2, m) => guestMessage(l2, m),
+        binary: (l2, buf) => { if (incoming) { incoming.parts.push(buf); incoming.got += buf.byteLength; reportHave(); } },
+        close: (l2) => { if (room === r && r.hostLink === l2) { leave(true); status("The host closed the room.", true); } },
+      }, via);
+      attempts.push(l);
+      return l;
     };
+    const why = () => {
+      if (!reached) return "Couldn't reach any matchmaking server. Check your connection, then try again.";
+      const answered = attempts.filter((a) => a.diag.answered);
+      if (!answered.length) return `No answer from room ${code}. Check the code, and that the room is still open in the host's tab (a tab in the background can fall asleep).`;
+      const a = answered[0];
+      return `Found the host, but a direct connection couldn't be made (a firewall or network is blocking it). Your routes: ${routesText(a.diag.mine)}; the host's: ${routesText(a.diag.theirs)}.`;
+    };
+    const timer = setTimeout(() => { if (live()) { const msg = why(); leave(true); status(msg, true); } }, 25000);
     render();
+    // PeerJS: an offer to the host's id
+    if (server) (async () => {
+      const sig = new Signal(PREFIX + "p-" + token, server);
+      try { await sig.open(); } catch (_) { return; }
+      if (!live()) { sig.close(); return; }
+      reached++;
+      r.signals.push(sig);
+      const l = attempt("PeerJS");
+      const offer = await l.offer();
+      if (!live()) return;
+      sig.onmessage = (m) => {
+        if (m.type === "ANSWER" && m.src === hostId) l.accept(m.payload.sdp);
+        else if (m.type === "EXPIRE" && m.src === hostId) mpLog("PeerJS: no room with that code there");
+      };
+      sig.send("OFFER", hostId, { sdp: offer, type: "data", connectionId: "dc_" + rand(10), serialization: "raw", reliable: true });
+    })();
+    // trackers: offers into the room's torrent (two each, in case another joining player gets one first)
+    const hash = await roomHash(code);
+    for (const url of trackers) (async () => {
+      const tr = new Tracker(url);
+      try { await tr.open(); } catch (_) { return; }
+      if (!live()) { tr.close(); return; }
+      reached++;
+      r.signals.push(tr);
+      const mine = [];
+      for (let i = 0; i < 2; i++) { const l = attempt(tr.name); l.offerId = rand(20); mine.push(l); }
+      const offers = await Promise.all(mine.map(async (l) => ({ offer: await l.offer(), offer_id: l.offerId })));
+      if (!live()) return;
+      tr.onAnswer = (from, answer, offerId) => mine.find((l) => l.offerId === offerId)?.accept(answer);
+      tr.announce(hash, token, offers);
+    })();
   }
-  const hostLink = () => (room && !room.host ? room.links.get(PREFIX + room.code) : null);
+  const hostLink = () => (room && !room.host ? room.hostLink : null);
   let lastHave = 0;
   function reportHave(force) {
     const l = hostLink();
@@ -409,8 +531,8 @@ export function createMultiplayer(api) {
     inRound = false;
     incoming = null;
     mpLog("leaving the room");
-    for (const l of r.links.values()) { l.h.close = null; l.close("left the room"); }
-    r.signal.close();
+    for (const l of [...r.links.values(), ...(r.hostLink ? [r.hostLink] : [])]) { l.h.close = null; l.close("left the room"); }
+    for (const s2 of r.signals || []) s2.close();
     log.length = 0;
     history.replaceState(null, "", location.pathname);
     render();
@@ -516,38 +638,50 @@ export function createMultiplayer(api) {
     }
   }
 
-  // ---- connection test: two connections inside this page find each other through the real server ----
+  // ---- connection test: for each matchmaking server, two connections inside this page find each other through it ----
+  async function testOne(kind, url) {
+    const name = kind === "peerjs" ? "PeerJS" : hostOf(url);
+    const a = kind === "peerjs" ? new Signal(PREFIX + "t-" + rand(12), url) : new Tracker(url);
+    const b = kind === "peerjs" ? new Signal(PREFIX + "t-" + rand(12), url) : new Tracker(url);
+    const links = [];
+    const end = (res) => { for (const l of links) { l.h.close = null; l.close(); } a.close(); b.close(); return `${name}: ${res}`; };
+    try { await a.open(); await b.open(); } catch (_) { return end("✗ couldn't reach it"); }
+    const offerer = new Link("b", true, {}, name), answerer = new Link("a", false, {}, name);
+    links.push(offerer, answerer);
+    let relayed = false;
+    const opened = new Promise((res) => { offerer.h.open = () => res(true); setTimeout(() => res(false), 15000); });
+    const offer = await offerer.offer();
+    if (kind === "peerjs") {
+      b.onmessage = (m) => { if (m.type === "OFFER") { relayed = true; answerer.answerTo(m.payload.sdp).then((ans) => b.send("ANSWER", m.src, { sdp: ans })); } };
+      a.onmessage = (m) => { if (m.type === "ANSWER") offerer.accept(m.payload.sdp); };
+      a.send("OFFER", b.id, { sdp: offer, type: "data", connectionId: "dc_test" });
+    } else {
+      const hash = (await roomHash("test-" + rand(8))), idA = rand(20), idB = rand(20);
+      b.onOffer = (from, o, offerId) => { relayed = true; answerer.answerTo(o).then((ans) => b.answer(hash, idB, from, offerId, ans)); };
+      a.onAnswer = (from, ans) => offerer.accept(ans);
+      b.announce(hash, idB);
+      await new Promise((r) => setTimeout(r, 1200));    // let b be in the torrent first
+      a.announce(hash, idA, [{ offer, offer_id: rand(20) }]);
+    }
+    const ok = await opened;
+    if (ok) return end("✓ works");
+    if (!relayed) return end("✗ reached it, but it didn't pass messages along");
+    if (!offerer.diag.answered) return end("✗ the answer didn't come back");
+    return end(`✗ messages pass, but the direct link didn't open (ICE ${offerer.diag.ice})`);
+  }
   async function selfTest() {
     const btn = $("#mpTest");
     btn.disabled = true;
     $("#mpLogBox").open = true;
     mpLog("--- connection test ---");
-    status("Testing the connection…");
-    const a = new Signal(PREFIX + "t-" + rand(10), server), b = new Signal(PREFIX + "t-" + rand(10), server);
-    const links = [];
-    const done = (msg, err) => {
-      mpLog(`test result: ${msg}`);
-      status(msg, err);
-      for (const l of links) { l.h.close = null; l.close(); }
-      a.close(); b.close();
-      btn.disabled = false;
-    };
-    try { await a.open(); await b.open(); } catch (err) { done(`Step 1 failed: couldn't connect to the multiplayer server (${err.message}).`, true); return; }
-    let got = false;
-    b.onmessage = (m) => {
-      if (!m.src) return;
-      if (m.type === "OFFER" && !links[1]) { got = true; links[1] = new Link(b, m.src, false, {}); }
-      links[1]?.onSignal(m);
-    };
-    a.onmessage = (m) => { if (m.src === b.id) links[0]?.onSignal(m); };
-    const ok = await new Promise((res) => {
-      links[0] = new Link(a, b.id, true, { open: () => res(true), close: () => res(false) });
-      setTimeout(() => res(false), 20000);
-    });
-    if (ok) done("Test passed: the server and direct connections both work in this browser.", false);
-    else if (!got) done("Step 2 failed: the server connected but didn't pass messages along. The free PeerJS server may be having problems.", true);
-    else if (!links[0].diag.answered) done("Step 3 failed: the answer didn't come back through the server.", true);
-    else done(`Step 4 failed: the server works, but the direct link didn't open (ICE ${links[0].diag.ice}). A firewall or browser setting may be blocking WebRTC.`, true);
+    status("Testing every matchmaking server (takes up to 20 seconds)…");
+    const results = await Promise.all([...(server ? [testOne("peerjs", server)] : []), ...trackers.map((u) => testOne("tracker", u))]);
+    for (const res of results) mpLog(`test: ${res}`);
+    const good = results.filter((x) => x.includes("✓")).length;
+    status(good
+      ? `${good} of ${results.length} matchmaking servers work from here, so multiplayer should work. (${results.join(" · ")})`
+      : `None of the matchmaking servers worked from here. (${results.join(" · ")})`, !good);
+    btn.disabled = false;
   }
   onLog = () => { const pre = $("#mpLog"); if (pre) { pre.textContent = LOG.join("\n"); pre.scrollTop = pre.scrollHeight; } };
   onLog();
