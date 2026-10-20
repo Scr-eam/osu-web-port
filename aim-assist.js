@@ -13,12 +13,12 @@
 // land dead centre. It never moves the cursor when you're far from the note, and the pull is smoothed so the
 // cursor doesn't jump. It also helps keep the cursor inside the slider follow circle.
 
-const CODE = "chokeless";
+const CODE = "godmode";
 const CODE_WINDOW_MS = 4000;
 
 const LOOKAHEAD_MS = 450;      // the pull builds up over this long before a note's time
 const MIN_LEVEL = 1;
-const MAX_LEVEL = 10;
+const MAX_LEVEL = 15;
 const DEFAULT_LEVEL = 5;
 
 // The tuning for a strength level (level 5 is the original setting).
