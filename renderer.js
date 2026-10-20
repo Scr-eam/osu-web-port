@@ -492,7 +492,7 @@ export function createRenderer(canvas, overlay) {
     resize();
     const { t, data, count, colours, preempt, fadeIn, radius, sliderPoints } = frame;
     gl.viewport(0, 0, canvas.width, canvas.height);
-    if (veil === null) gl.clearColor(0.02, 0.02, 0.05, 1);
+    if (veil === null) gl.clearColor(0, 0, 0, 1);
     else gl.clearColor(0, 0, 0, veil);          // a black veil over the video: 0 = none, 1 = hidden
     gl.clear(gl.COLOR_BUFFER_BIT);
     const view = frame.view || PLAYFIELD_VIEW;
@@ -572,7 +572,7 @@ export function createRenderer(canvas, overlay) {
     // lazer's legacy look: a border band (SliderBorder, white by default), then a gradient of the
     // track colour from the edge to the centre. Each layer is drawn over the whole path before the
     // next, so overlapping points never blend. Snaking in and out trims the path.
-    const bg = [0.02, 0.02, 0.05];
+    const bg = [0, 0, 0];
     for (let i = count - 1; i >= 0; i--) {
       const r = rec(i);
       if (r[0] !== KIND.SLIDER) continue;

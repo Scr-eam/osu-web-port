@@ -217,21 +217,42 @@ function argonHealth(ctx, u, shown, glow) {
 // fill's end. A skin with scorebar-marker has the fill further in and the marker on its middle line. An older
 // skin marks the end with its ki heads, which change to the danger heads as health falls. shown is the bar's
 // length (a fraction) and hp the health; a skin with one colour image rather than animation frames uses it.
-function legacyHealth(ctx, sk, u, t, shown, hp) {
+function legacyHealth(ctx, sk, u, t, shown, hp, w) {
   const bg = sk.sprite("scorebar-bg");
+  let x0 = 0;  // where the bar's own pieces (fill and marker) start
   if (bg) {
     ctx.globalAlpha = 1;
-    ctx.drawImage(bg.bmp, 0, 0, bg.w1 * u, bg.h1 * u);
+    const bw = bg.w1 * u;
+    const cuts = bg.w1 > 1100 && w > bw + 1 ? overlayCuts(bg) : null;
+    if (!cuts) ctx.drawImage(bg.bmp, 0, 0, bw, bg.h1 * u);
+    else {
+      // A whole-screen picture (a frame round the playfield, panels for the score and keys) on a window
+      // wider than it was drawn for. Its middle stays centred on the playfield, its right part sits at the
+      // right edge with the score and keys, and the gaps are filled by stretching one plain column on each
+      // side, so nothing is left bare at the edges.
+      const k = bg.bmp.width / bg.w1;
+      const bh = bg.bmp.height;
+      const H = bg.h1 * u;
+      const mid = (w - bw) / 2;
+      const [cl, cr] = cuts;
+      const part = (sx, sw, dx, dw) => sw > 0 && dw > 0 && ctx.drawImage(bg.bmp, sx * k, 0, sw * k, bh, dx, 0, dw, H);
+      part(0, cl, 0, cl * u);
+      part(cl, 1 / k, cl * u, mid);                                   // stretched left column
+      part(cl, cr - cl, mid + cl * u, (cr - cl) * u);
+      part(cr, 1 / k, mid + cr * u, w - bw - mid);                    // stretched right column
+      part(cr, bg.w1 - cr, w - (bg.w1 - cr) * u, (bg.w1 - cr) * u);
+      x0 = mid;
+    }
   }
   const n = sk.barFrameCount();
   const fill = n > 0 ? sk.barFrame(((Math.floor((t * 60) / 1000) % n) + n) % n) : sk.sprite("scorebar-colour");
   const newStyle = !!sk.sprite("scorebar-marker");
   const ox = (newStyle ? 7.5 : 3) * STABLE_MAGIC;
   const oy = (newStyle ? 7.8 : 10) * STABLE_MAGIC;
-  const w = fill ? fill.w1 * shown : 0;
-  if (fill && w > 0) {
+  const fw = fill ? fill.w1 * shown : 0;
+  if (fill && fw > 0) {
     ctx.globalAlpha = 1;
-    ctx.drawImage(fill.bmp, 0, 0, fill.bmp.width * shown, fill.bmp.height, ox * u, oy * u, w * u, fill.h1 * u);
+    ctx.drawImage(fill.bmp, 0, 0, fill.bmp.width * shown, fill.bmp.height, x0 + ox * u, oy * u, fw * u, fill.h1 * u);
   }
   const marker = newStyle
     ? sk.sprite("scorebar-marker")
@@ -239,8 +260,60 @@ function legacyHealth(ctx, sk, u, t, shown, hp) {
   if (marker) {
     ctx.globalAlpha = 1;
     const my = newStyle ? oy + (fill ? fill.h1 : 0) / 2 : oy;
-    centred(ctx, marker, (ox + w) * u, my * u, u);
+    centred(ctx, marker, x0 + (ox + fw) * u, my * u, u);
   }
+}
+
+// Where to split a whole-screen scorebar-bg: one column on each side (in the picture's 1x units) that is
+// plain across, so stretching it adds no visible shape.
+const cutCache = new WeakMap();
+function overlayCuts(bg) {
+  if (cutCache.has(bg)) return cutCache.get(bg);
+  let cuts = null;
+  try {
+    const W = Math.round(bg.w1), Hh = Math.round(bg.h1);
+    const c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(W, Hh) : Object.assign(document.createElement("canvas"), { width: W, height: Hh });
+    const g = c.getContext("2d");
+    g.drawImage(bg.bmp, 0, 0, W, Hh);
+    const d = g.getImageData(0, 0, W, Hh).data;
+    const same = (x) => {  // column x matches column x + 1
+      for (let y = 0; y < Hh; y++) {
+        const i = (y * W + x) * 4;
+        for (let ch = 0; ch < 4; ch++) if (Math.abs(d[i + ch] - d[i + 4 + ch]) > 6) return false;
+      }
+      return true;
+    };
+    const changes = (x) => {  // how many times column x changes going down: fewer means plainer
+      let n = 0;
+      for (let y = 0; y + 1 < Hh; y++) {
+        const i = (y * W + x) * 4, j = i + W * 4;
+        for (let ch = 0; ch < 4; ch++) if (Math.abs(d[i + ch] - d[j + ch]) > 6) { n++; break; }
+      }
+      return n;
+    };
+    // Runs of plain-across columns in the outer 40% of each side, not reaching the middle fifth (the
+    // inside of a playfield frame is one long run). The plainest run wins, the outermost on a tie.
+    const runs = [];
+    for (let x = 0, s = -1; x < W; x++) {
+      const ok = x < W - 1 && same(x);
+      if (ok && s < 0) s = x;
+      if (!ok && s >= 0) { if (x - s >= 3) runs.push([s, x - 1]); s = -1; }
+    }
+    const pick = (left) => {
+      let best = null;
+      for (const [a, b] of runs) {
+        if (left ? b >= W * 0.4 : a <= W * 0.6) continue;
+        const m = Math.floor((a + b) / 2);
+        const score = changes(m);
+        const outer = left ? -m : m;
+        if (!best || score < best.score || (score === best.score && outer > best.outer)) best = { m, score, outer };
+      }
+      return best ? best.m : left ? 0 : W - 1;
+    };
+    cuts = [pick(true), pick(false)];
+  } catch { cuts = [0, Math.round(bg.w1) - 1]; }
+  cutCache.set(bg, cuts);
+  return cuts;
 }
 
 // A skin sprite drawn with its centre at (x, y), in overlay pixels.
@@ -736,18 +809,11 @@ export function createHud({ makeCanvas = defaultCanvas } = {}) {
       const maxW = Math.max(1, ...hud.errors.windows);
       for (const e of hud.errors.list) if (e.rel === undefined) e.rel = clamp(e.offset / maxW / 2, -0.5, 0.5);
     }
-    let w = env.w;
+    const w = env.w;
     const H = env.h;
     const sk = skin || NO_SKIN;
     // A loaded skin takes the legacy look for the combo counter and health bar, as lazer's legacy HUD does.
     const skinOn = !!skin && (skin.active ? skin.active() : true);
-    // Legacy skins are drawn for a 16:9 screen: elements sit by the top-left (the health bar, whose
-    // background is often a whole-screen picture with panels for the score and a frame round the playfield)
-    // and by the right edge (score, accuracy, keys). On a wider window the HUD is laid out in a centred 16:9
-    // area, so those line up with each other and with the centred playfield as the skin intends.
-    const wide = skinOn && w / H > 16 / 9 + 0.01;
-    const hudX = wide ? (w - (H * 16) / 9) / 2 : 0;
-    if (wide) w = (H * 16) / 9;
     const u = Math.min(w / 1024, H / 768);
     const hp = clamp(hud.health ?? 0, 0, 1);
     const digitsOf = (family, extra = []) => [...DIGITS, ...extra].every((k) => sk.sprite(`${family}-${k}`));
@@ -761,13 +827,12 @@ export function createHud({ makeCanvas = defaultCanvas } = {}) {
     const stacked = skinOn || legacy.score || legacy.health;  // a skin takes the legacy corner
 
     ctx.save();
-    if (hudX) ctx.translate(hudX, 0);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.globalAlpha = 1;
 
     if (legacy.health) {
-      legacyHealth(ctx, sk, u, t, health.shown, hp);
+      legacyHealth(ctx, sk, u, t, health.shown, hp, w);
     } else {
       // The wedges and the bar's background, from the cached layer when the canvas can make one.
       const backing = layerFor(u);

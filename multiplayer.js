@@ -15,6 +15,11 @@
 // imported map. When everyone is ready, the host starts the round: each player plays it on their own clock and
 // reports score, combo, accuracy and misses a few times a second.
 //
+// The server list: a host can make its room public. Public hosts also join one shared "lobby" torrent on the
+// trackers. A browser looking for rooms sends a batch of little "list" offers into that torrent; the tracker hands
+// each to a random peer in it, and every public host that gets one answers with its room's details (code, host,
+// map, players) in place of a connection answer. No connection is made for the list itself.
+//
 // createMultiplayer(api) wires it into the page; api is described where index.html calls it.
 
 const PEERJS = "wss://0.peerjs.com:443/peerjs";
@@ -46,11 +51,18 @@ function mpLog(msg) {
 const short = (id) => String(id || "").replace(PREFIX, "");
 const hostOf = (url) => { try { return new URL(url.replace(/^ws/, "http")).hostname; } catch (_) { return url; } };
 const rand = (n, chars = "abcdefghijklmnopqrstuvwxyz0123456789") => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-// the room's "torrent" on the trackers: 20 hex characters of SHA-1("osuwebport/<code>")
-async function roomHash(code) {
-  const d = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(`osuwebport/${code}`)));
+// a "torrent" on the trackers: 20 hex characters of SHA-1 of a name
+async function hashOf(text) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text)));
   return [...d.slice(0, 10)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+// the room's torrent
+const roomHash = (code) => hashOf(`osuwebport/${code}`);
+// the server list's torrent, the "offer" that asks for a room's details, and the start of the answer carrying them
+const LOBBY = "osuwebport/lobby/1";
+const LIST_ASK = "osuwebport-list";
+const LIST_INFO = "osuwebport-room:";
+const LIST_OFFERS = 20;
 // counts the kinds of route in an SDP (host = same network, srflx = through the router, relay = TURN)
 function countRoutes(sdp, into) {
   for (const m of String(sdp || "").matchAll(/ typ (host|srflx|relay|prflx)/g)) if (m[1] in into) into[m[1]]++;
@@ -125,6 +137,8 @@ class Tracker {
     this.name = hostOf(url);
     this.onOffer = null;
     this.onAnswer = null;
+    this.keep = new Map();      // info_hash -> timer that announces again
+    this.started = new Set();   // info_hashes announced in
   }
   open() {
     return new Promise((resolve, reject) => {
@@ -136,28 +150,46 @@ class Tracker {
       const timer = setTimeout(() => { if (!done) { done = true; mpLog(`tracker ${this.name}: no answer`); try { ws.close(); } catch (_) {} reject(new Error("timeout")); } }, 8000);
       ws.onopen = () => { if (done) return; done = true; clearTimeout(timer); mpLog(`tracker ${this.name}: connected`); resolve(); };
       ws.onerror = () => { if (!done) { done = true; clearTimeout(timer); mpLog(`tracker ${this.name}: couldn't reach it`); reject(new Error("unreachable")); } };
-      ws.onclose = (e) => { clearInterval(this.keep); if (done && !this.closing) mpLog(`tracker ${this.name}: connection closed (code ${e.code})`); };
+      ws.onclose = (e) => { for (const k of this.keep.values()) clearInterval(k); this.keep.clear(); if (done && !this.closing) mpLog(`tracker ${this.name}: connection closed (code ${e.code})`); };
       ws.onmessage = (e) => {
         let m;
         try { m = JSON.parse(e.data); } catch (_) { return; }
         if (m["failure reason"] || m.failure_reason) { mpLog(`tracker ${this.name}: error "${m["failure reason"] || m.failure_reason}"`); return; }
-        if (m.offer && m.offer_id) { mpLog(`tracker ${this.name}: got an offer`); this.onOffer?.(m.peer_id, m.offer, m.offer_id); }
-        else if (m.answer && m.offer_id) { mpLog(`tracker ${this.name}: got an answer`); this.onAnswer?.(m.peer_id, m.answer, m.offer_id); }
+        const quiet = m.offer?.sdp === LIST_ASK || String(m.answer?.sdp || "").startsWith(LIST_INFO);
+        if (m.offer && m.offer_id) { if (!quiet) mpLog(`tracker ${this.name}: got an offer`); this.onOffer?.(m.peer_id, m.offer, m.offer_id, m.info_hash); }
+        else if (m.answer && m.offer_id) { if (!quiet) mpLog(`tracker ${this.name}: got an answer`); this.onAnswer?.(m.peer_id, m.answer, m.offer_id, m.info_hash); }
       };
     });
   }
   raw(m) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(m)); }
   announce(hash, peerId, offers = []) {
-    this.raw({ action: "announce", info_hash: hash, peer_id: peerId, numwant: Math.max(1, offers.length), uploaded: 0, downloaded: 0, left: 1, event: this.started ? undefined : "started", offers });
-    this.started = true;
+    this.raw({ action: "announce", info_hash: hash, peer_id: peerId, numwant: Math.max(1, offers.length), uploaded: 0, downloaded: 0, left: 1, event: this.started.has(hash) ? undefined : "started", offers });
+    this.started.add(hash);
   }
   // stays in the torrent: trackers drop peers that don't announce again
-  keepAnnouncing(hash, peerId) { clearInterval(this.keep); this.announce(hash, peerId); this.keep = setInterval(() => this.announce(hash, peerId), 40000); }
+  keepAnnouncing(hash, peerId) {
+    clearInterval(this.keep.get(hash));
+    this.announce(hash, peerId);
+    this.keep.set(hash, setInterval(() => this.announce(hash, peerId), 40000));
+  }
+  // leaves the torrent
+  stop(hash, peerId) {
+    clearInterval(this.keep.get(hash));
+    this.keep.delete(hash);
+    if (!this.started.delete(hash)) return;
+    this.raw({ action: "announce", info_hash: hash, peer_id: peerId, numwant: 0, uploaded: 0, downloaded: 0, left: 1, event: "stopped" });
+  }
   answer(hash, peerId, toPeer, offerId, answer) {
     mpLog(`tracker ${this.name}: sending an answer`);
     this.raw({ action: "announce", info_hash: hash, peer_id: peerId, to_peer_id: toPeer, offer_id: offerId, answer });
   }
-  close() { clearInterval(this.keep); this.closing = true; try { this.ws?.close(); } catch (_) {} }
+  close() {
+    if (this.peerId) for (const h of [...this.started]) this.stop(h, this.peerId);
+    for (const k of this.keep.values()) clearInterval(k);
+    this.keep.clear();
+    this.closing = true;
+    try { this.ws?.close(); } catch (_) {}
+  }
 }
 
 // ---- one WebRTC connection to another player, with one ordered, reliable data channel ----
@@ -274,6 +306,7 @@ export function createMultiplayer(api) {
       t: "state",
       code: room.code,
       phase: room.phase,
+      public: !!room.public,
       map: room.map,
       players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, host: p.host, ready: p.ready, hasMap: p.hasMap, dl: p.dl, live: p.live })),
     };
@@ -332,7 +365,7 @@ export function createMultiplayer(api) {
       }
     }
     code = code || rand(5, CODE_CHARS);
-    const r = { code, host: true, signals: [], links: new Map(), players: new Map(), map: null, phase: "lobby", me: "host" };
+    const r = { code, host: true, signals: [], links: new Map(), players: new Map(), map: null, phase: "lobby", me: "host", public: false };
     room = r;
     r.players.set("host", { id: "host", name, host: true, ready: true, hasMap: false, dl: null, live: null });
     // an offer from a joining player, by any route: answered once per player
@@ -364,13 +397,24 @@ export function createMultiplayer(api) {
     }
     const hash = await roomHash(code);
     const me = rand(20);
+    r.trackerId = me;
+    r.lobby = await hashOf(LOBBY);
     const up = await Promise.all(trackers.map(async (url) => {
       const tr = new Tracker(url);
       try { await tr.open(); } catch (_) { return false; }
       if (room !== r) { tr.close(); return false; }
+      tr.peerId = me;
       r.signals.push(tr);
-      tr.onOffer = (from, offer, offerId) => accept(from, offer, (ans) => tr.answer(hash, me, from, offerId, ans), tr.name);
+      tr.onOffer = (from, offer, offerId, h) => {
+        if (h === r.lobby) {
+          // someone looking at the server list: answer with the room's details while the room is public
+          if (r.public && offer?.sdp === LIST_ASK) tr.answer(r.lobby, me, from, offerId, { type: "answer", sdp: LIST_INFO + JSON.stringify(roomInfo(r)) });
+          return;
+        }
+        accept(from, offer, (ans) => tr.answer(hash, me, from, offerId, ans), tr.name);
+      };
       tr.keepAnnouncing(hash, me);
+      if (r.public) tr.keepAnnouncing(r.lobby, me);
       return true;
     }));
     if (room !== r) return;
@@ -384,6 +428,35 @@ export function createMultiplayer(api) {
     render();
     broadcast(true);
   }
+  // what the server list shows about a room
+  function roomInfo(r) {
+    const cut = (t, n) => String(t || "").slice(0, n);
+    const host = r.players.get("host");
+    return {
+      code: r.code,
+      host: cut(host?.name || name, 24),
+      players: r.players.size,
+      phase: r.phase,
+      title: r.map ? cut(r.map.title || r.map.name.replace(/\.osz$/i, ""), 80) : "",
+      artist: r.map ? cut(r.map.artist, 60) : "",
+      diff: r.map ? cut(r.map.diffName, 60) : "",
+      mods: r.map?.mods?.length ? r.map.mods.join("").slice(0, 24) : "",
+    };
+  }
+  // shows the room in the server list, or takes it out
+  function setPublic(on) {
+    if (!room?.host) return;
+    room.public = !!on;
+    for (const tr of room.signals) {
+      if (!(tr instanceof Tracker)) continue;
+      if (on) tr.keepAnnouncing(room.lobby, room.trackerId);
+      else tr.stop(room.lobby, room.trackerId);
+    }
+    mpLog(`room ${room.code} is now ${on ? "public" : "private"}`);
+    broadcast(true);
+    render();
+  }
+
   function setMap(sel) {
     room.map = sel ? { name: sel.name, diffName: sel.diffName, diffIndex: sel.diffIndex, mods: sel.mods.filter((m) => m !== "AP"), title: sel.title, artist: sel.artist } : null;
     for (const p of room.players.values()) if (!p.host) p.ready = false;
@@ -469,6 +542,94 @@ export function createMultiplayer(api) {
       tr.announce(hash, token, offers);
     })();
   }
+  // ---------------------------------------------------------------- server list ----
+  // Asks the lobby torrent on every tracker for public rooms. Answers come in for a few seconds; a room that
+  // didn't answer this time is dropped from the list.
+  const browse = { trackers: new Map(), rooms: new Map(), asks: new Set(), busy: false, at: 0, timer: 0, id: rand(20) };
+  async function refreshList() {
+    if (browse.busy || room) return;
+    browse.busy = true;
+    browse.at = performance.now();
+    renderList();
+    const lobby = await hashOf(LOBBY);
+    const seen = new Set();
+    browse.seen = seen;
+    await Promise.all(trackers.map(async (url) => {
+      let tr = browse.trackers.get(url);
+      if (!tr || tr.ws?.readyState !== 1) {
+        tr = new Tracker(url);
+        try { await tr.open(); } catch (_) { browse.trackers.delete(url); return; }
+        tr.peerId = browse.id;
+        browse.trackers.set(url, tr);
+        tr.onAnswer = (from, answer, offerId, h) => {
+          if (h !== lobby || !browse.asks.has(offerId)) return;
+          const sdp = String(answer?.sdp || "");
+          if (!sdp.startsWith(LIST_INFO)) return;
+          let info;
+          try { info = JSON.parse(sdp.slice(LIST_INFO.length)); } catch (_) { return; }
+          const code = String(info?.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+          if (code.length < 4) return;
+          browse.seen?.add(code);
+          browse.rooms.set(code, { ...info, code, players: Math.max(1, Math.min(99, info.players | 0)) });
+          renderList();
+        };
+      }
+      const offers = Array.from({ length: LIST_OFFERS }, () => {
+        const id = rand(20);
+        browse.asks.add(id);
+        return { offer: { type: "offer", sdp: LIST_ASK }, offer_id: id };
+      });
+      tr.announce(lobby, browse.id, offers);
+    }));
+    await new Promise((r) => setTimeout(r, 4000));
+    // out of the lobby again, so other people's list offers go to hosts rather than to this page
+    for (const tr of browse.trackers.values()) tr.stop(lobby, browse.id);
+    for (const code of [...browse.rooms.keys()]) if (!seen.has(code)) browse.rooms.delete(code);
+    browse.asks.clear();
+    browse.busy = false;
+    browse.done = true;
+    browse.reached = browse.trackers.size;
+    renderList();
+  }
+  function stopBrowsing() {
+    clearInterval(browse.timer);
+    browse.timer = 0;
+    for (const tr of browse.trackers.values()) tr.close();
+    browse.trackers.clear();
+  }
+  // refreshes while the list is on screen
+  function browseWhileShown() {
+    const shown = api.screen() === "mp" && !room && !document.hidden;
+    if (shown && !browse.timer) {
+      if (performance.now() - browse.at > 5000 || !browse.done) refreshList();
+      browse.timer = setInterval(() => refreshList(), 20000);
+    } else if (!shown && browse.timer) stopBrowsing();
+  }
+  function renderList() {
+    const ul = $("#mpList");
+    if (!ul) return;
+    const rooms = [...browse.rooms.values()].sort((a, b) => (a.phase === "playing") - (b.phase === "playing") || b.players - a.players || a.code.localeCompare(b.code));
+    $("#mpRefresh").disabled = browse.busy;
+    $("#mpRefresh").classList.toggle("spin", browse.busy);
+    $("#mpListNote").textContent = rooms.length ? `${rooms.length} open` : "";
+    if (!rooms.length) {
+      const msg = browse.busy ? "Looking for rooms…"
+        : browse.done && !browse.reached ? "Couldn't reach the room servers. Check your connection, then refresh."
+        : "No public rooms right now. Create one and make it public!";
+      ul.innerHTML = `<li class="mp-empty">${esc(msg)}</li>`;
+      return;
+    }
+    ul.innerHTML = rooms.map((x) => {
+      const map = x.title ? `${esc(x.title)}${x.diff ? ` <span>[${esc(x.diff)}]</span>` : ""}${x.mods ? ` <span>+${esc(x.mods)}</span>` : ""}` : `<span>No map picked yet</span>`;
+      const playing = x.phase === "playing";
+      return `<li><i class="av" style="--h:${hue(x.host)}">${esc(String(x.host || "?").charAt(0).toUpperCase())}</i>`
+        + `<div class="mp-li-main"><b>${esc(x.host)}'s room</b><small>${map}</small></div>`
+        + `<span class="pill">${x.players} player${x.players === 1 ? "" : "s"}</span>`
+        + `<span class="pill ${playing ? "dl" : "ok"}">${playing ? "Playing" : "Open"}</span>`
+        + `<button data-code="${esc(x.code)}">Join</button></li>`;
+    }).join("");
+  }
+
   const hostLink = () => (room && !room.host ? room.hostLink : null);
   let lastHave = 0;
   function reportHave(force) {
@@ -505,6 +666,7 @@ export function createMultiplayer(api) {
     if (!room) return;
     room.me = st.you;
     room.phase = st.phase;
+    if (!room.host) room.public = !!st.public;
     room.map = st.map;
     room.players = new Map(st.players.map((p) => [p.id, p]));
     render();
@@ -574,8 +736,12 @@ export function createMultiplayer(api) {
     $("#mpJoin").hidden = inRoom;
     $("#mpRoom").hidden = !inRoom;
     $("#mpName").value = name;
-    if (!inRoom) return;
+    browseWhileShown();
+    if (!inRoom) { renderList(); return; }
     $("#mpCode").textContent = room.code;
+    $("#mpPublicBox").hidden = !room.host;
+    $("#mpPublic").checked = !!room.public;
+    $("#mpPublicTag").hidden = room.host || !room.public;
     const me = room.players.get(room.me);
     // map
     const m = room.map;
@@ -696,6 +862,10 @@ export function createMultiplayer(api) {
   };
   $("#mpName").oninput = (e) => { name = e.target.value.slice(0, 24) || "Player"; store.set("osuweb.mpName", name); };
   $("#mpCreate").onclick = () => createRoom();
+  $("#mpPublic").onchange = (e) => setPublic(e.target.checked);
+  $("#mpRefresh").onclick = () => refreshList();
+  $("#mpList").onclick = (e) => { const b = e.target.closest("button[data-code]"); if (b) joinRoom(b.dataset.code); };
+  document.addEventListener("visibilitychange", () => browseWhileShown());
   $("#mpJoinBtn").onclick = () => joinRoom($("#mpJoinCode").value);
   $("#mpJoinCode").onkeydown = (e) => { if (e.key === "Enter") joinRoom(e.target.value); };
   $("#mpLeave").onclick = () => { leave(); status("You left the room."); };
@@ -755,6 +925,6 @@ export function createMultiplayer(api) {
       render();
       return !!room;
     },
-    screenChanged() { renderBoard(); if (api.screen() === "mp") render(); },
+    screenChanged() { renderBoard(); if (api.screen() === "mp") render(); else browseWhileShown(); },
   };
 }
