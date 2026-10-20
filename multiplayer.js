@@ -27,7 +27,6 @@ const TRACKERS = [
   "wss://tracker.openwebtorrent.com",
   "wss://tracker.webtorrent.dev",
   "wss://tracker.btorrent.xyz",
-  "wss://tracker.files.fm:7073/announce",
 ];
 const ICE = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
@@ -62,7 +61,7 @@ const roomHash = (code) => hashOf(`osuwebport/${code}`);
 const LOBBY = "osuwebport/lobby/1";
 const LIST_ASK = "osuwebport-list";
 const LIST_INFO = "osuwebport-room:";
-const LIST_OFFERS = 20;
+const LIST_OFFERS = 4; // reduced from 20 to prevent tracker rate-limiting on cloud hosting
 // counts the kinds of route in an SDP (host = same network, srflx = through the router, relay = TURN)
 function countRoutes(sdp, into) {
   for (const m of String(sdp || "").matchAll(/ typ (host|srflx|relay|prflx)/g)) if (m[1] in into) into[m[1]]++;
@@ -277,7 +276,7 @@ class Link {
 
 // ---- the room and its screen ----
 export function createMultiplayer(api) {
-  const $ = api.$;
+  const $= api.$;
   const store = {
     get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
@@ -419,7 +418,7 @@ export function createMultiplayer(api) {
     }));
     if (room !== r) return;
     const nTr = up.filter(Boolean).length;
-    mpLog(`room ${code} is open on: ${[sig && "PeerJS", nTr && `${nTr} of ${trackers.length} trackers`].filter(Boolean).join(" and ") || "nothing"}`);
+    mpLog(`room ${code} is open on: ${[sig && "PeerJS", nTr && `${nTr} of${trackers.length} trackers`].filter(Boolean).join(" and ") || "nothing"}`);
     if (!sig && !nTr) { leave(true); status("Couldn't reach any matchmaking server, so no one could join. Check your connection, then try again.", true); return; }
     const sel = api.selection();
     if (sel?.name) setMap(sel);
@@ -444,13 +443,21 @@ export function createMultiplayer(api) {
     };
   }
   // shows the room in the server list, or takes it out
-  function setPublic(on) {
+  async function setPublic(on) {
     if (!room?.host) return;
     room.public = !!on;
+    const lobby = await hashOf(LOBBY);
     for (const tr of room.signals) {
       if (!(tr instanceof Tracker)) continue;
-      if (on) tr.keepAnnouncing(room.lobby, room.trackerId);
-      else tr.stop(room.lobby, room.trackerId);
+      if (on) {
+        if (tr.ws?.readyState !== 1) {
+          try { await tr.open(); } catch (_) { continue; }
+          tr.peerId = room.trackerId;
+        }
+        tr.keepAnnouncing(lobby, room.trackerId);
+      } else {
+        tr.stop(lobby, room.trackerId);
+      }
     }
     mpLog(`room ${room.code} is now ${on ? "public" : "private"}`);
     broadcast(true);
