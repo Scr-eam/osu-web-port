@@ -23,7 +23,7 @@ const CODE = "aimbot";
 const CODE_WINDOW_MS = 4000;
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
-const DEFAULT_LEVEL = 5;
+const DEFAULT_LEVEL = 1;
 const COLOUR = "#39f";
 const LOOKAHEAD_MS = 380;       // the note you're heading for: from this long before its time
 const HOLD_MS = 70;             // full strength until this long after it (presses are often a little late)
@@ -32,15 +32,15 @@ const RELEASE_MS = 170;         // then fading out until this long after it
 export function levelParams(level) {
   const f = (level - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL);   // 0 .. 1
   return {
-    magnet: 0.15 + 0.6 * f,        // extra share of your movement toward the note
-    steer: 0.15 + 0.6 * f,         // how much your path bends toward the note per distance moved
-    settleReach: 0.8 + 1.6 * f,    // circle radii: how far off you can stop and still be eased onto the note
-    settleGain: 0.45 + 0.5 * f,
-    sliderGain: 0.3 + 0.6 * f,     // sliders: how strongly drift is corrected
-    sliderTau: 110 - 60 * f,       // ms
-    maxOffset: 0.8 + 2.4 * f,      // circle radii: the most the cursor can differ from your mouse
-    aimSpread: 0.38 - 0.24 * f,    // off-centre aim point, sigma in circle radii
-    wobble: 0.28 - 0.12 * f,       // slider target wobble, circle radii
+    magnet: 0.05 + 0.1 * f,        // extra share of your movement toward the note
+    steer: 0.05 + 0.1 * f,         // how much your path bends toward the note per distance moved
+    settleReach: 0.4 + 0.4 * f,    // circle radii: how far off you can stop and still be eased onto the note
+    settleGain: 0.2 + 0.2 * f,
+    sliderGain: 0.1 + 0.2 * f,     // sliders: how strongly drift is corrected
+    sliderTau: 110,       // ms
+    maxOffset: 0.3 + 0.5 * f,      // circle radii: the most the cursor can differ from your mouse
+    aimSpread: 0,    // off-centre aim point, sigma in circle radii
+    wobble: 0,       // slider target wobble, circle radii
   };
 }
 
