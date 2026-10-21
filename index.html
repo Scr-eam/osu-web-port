@@ -3203,7 +3203,6 @@ window.osuDemo = {
   }).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ["data-screen", "data-expanded"] });
   addEventListener("resize", scatterShown);
 
-  // a slider: its body in the skin's border / track colours, the end circle, and while sliding the ball and follow circle
   const drawSlider = (btn, now, hr) => {
     const path = btn._path;
     const sk = activeSkin() || null;
@@ -3212,25 +3211,54 @@ window.osuDemo = {
     const pal = sk?.colours?.length ? sk.colours : DEFAULT_COMBO_COLOURS;
     const i = Number(btn.dataset.n) - 1;
     const rgb = pal[(i + 2) % pal.length];
-    const border = sk?.ini?.sliderBorder || [255, 255, 255];
-    const track = sk?.ini?.sliderTrack || rgb.map((v) => Math.round(v * 0.32));
     const st = noteState.get(btn) || {};
     const sl = slides.get(btn);
     const D = path.r * 2;
     const ox = -hr.left, oy = -hr.top;
+
     // fades: the body dims when the slide breaks, and fades out after the tail before coming back
     let a = 1;
     if (st.tailAt) { const u = (now - st.tailAt) / 240; a = u < 1 ? 1 - u : u < 1.4 ? 0 : Math.min(1, (u - 1.4) / 0.8); }
     if (st.broke && now - st.broke < 300) a = 0.5 + 0.5 * ((now - st.broke) / 300);
+    
     g.save();
     g.globalAlpha = a;
-    g.lineCap = "round"; g.lineJoin = "round";
-    const line = () => { g.beginPath(); path.pts.forEach((q, k) => (k ? g.lineTo(q.x + ox, q.y + oy) : g.moveTo(q.x + ox, q.y + oy))); };
-    line(); g.strokeStyle = `rgb(${border.join(",")})`; g.lineWidth = D; g.stroke();
-    line(); g.strokeStyle = `rgba(${track.join(",")}, .92)`; g.lineWidth = D * 0.84; g.stroke();
-    line(); g.strokeStyle = `rgba(255,255,255,.08)`; g.lineWidth = D * 0.4; g.stroke();
-    // the end circle (the skin's slider end circle, else a hit circle like stable draws)
-    const tail = path.pts[path.pts.length - 1];
+    g.lineCap = "round";
+    g.lineJoin = "round";
+
+    // Helper to trace the path smoothly
+    const tracePath = () => {
+      g.beginPath();
+      path.pts.forEach((q, k) => (k ? g.lineTo(q.x + ox, q.y + oy) : g.moveTo(q.x + ox, q.y + oy)));
+    };
+
+    // --- Smooth slider body rendering (Pass 1 color matching via smooth strokes) ---
+    const borderColRGB = sk?.ini?.sliderBorder || [255, 255, 255];
+    const defaultTrack = [32 / 255, 32 / 255, 32 / 255];
+    const baseTrack = sk?.ini?.sliderTrack || defaultTrack;
+    const bodyCol = baseTrack.map((c) => c * 0.85);
+    const edge = bodyCol.map((c) => c * 0.65);
+    const core = bodyCol.map((c) => Math.min(1, c * 1.35 + 0.15));
+
+    // 1. Outer border stroke
+    tracePath();
+    g.strokeStyle = `rgb(${borderColRGB.join(",")})`;
+    g.lineWidth = D;
+    g.stroke();
+
+    // 2. Smooth gradient track layers
+    const GRADIENT_STEPS = 5;
+    for (let s = 0; s < GRADIENT_STEPS; s++) {
+      const f = s / (GRADIENT_STEPS - 1);
+      const mix = [0, 1, 2].map((k) => edge[k] + (core[k] - edge[k]) * f);
+      const lr = D * (0.88 - 0.5 * f);
+      tracePath();
+      g.strokeStyle = `rgb(${mix.map(v => Math.round(v * 255)).join(",")})`;
+      g.lineWidth = lr;
+      g.stroke();
+    }
+    // -----------------------------------------------------------------
+
     const sprite = (name, x, y, size, tint) => {
       const img = imgs.get(name);
       if (!img) return false;
@@ -3238,12 +3266,25 @@ window.osuDemo = {
       g.drawImage(tint ? tinted(img, tint) : img, x + ox - img.width * k / 2, y + oy - img.height * k / 2, img.width * k, img.height * k);
       return true;
     };
+
+    // Draw Head (start circle)
+    const head = path.pts[0];
+    if (!sprite("hitcircle", head.x, head.y, 1, rgb)) {
+      g.beginPath(); g.arc(head.x + ox, head.y + oy, D / 2, 0, Math.PI * 2); g.fillStyle = `rgb(${rgb.join(",")})`; g.fill();
+    }
+    if (!sprite("hitcircleoverlay", head.x, head.y, 1, null)) {
+      g.beginPath(); g.arc(head.x + ox, head.y + oy, D / 2 - 3, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = "#fff"; g.stroke();
+    }
+
+    // Draw Tail (end circle)
+    const tail = path.pts[path.pts.length - 1];
     if (!sprite("sliderendcircle", tail.x, tail.y, 1, rgb)) {
       if (!sprite("hitcircle", tail.x, tail.y, 1, rgb)) { g.beginPath(); g.arc(tail.x + ox, tail.y + oy, D / 2, 0, Math.PI * 2); g.fillStyle = `rgb(${rgb.join(",")})`; g.fill(); }
     }
     if (!sprite("sliderendcircleoverlay", tail.x, tail.y, 1, null) && !sprite("hitcircleoverlay", tail.x, tail.y, 1, null)) {
       g.beginPath(); g.arc(tail.x + ox, tail.y + oy, D / 2 - 3, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = "#fff"; g.stroke();
     }
+
     // the tail's hit burst
     if (st.tailAt && now - st.tailAt < 240) {
       const u = (now - st.tailAt) / 240;
@@ -3252,6 +3293,7 @@ window.osuDemo = {
       sprite("hitcircleoverlay", tail.x, tail.y, 1 + 0.5 * u, null);
       if (imgs.get("glow")) { g.globalAlpha = 0.9 * Math.max(0, 1 - u * 1.2); sprite("glow", tail.x, tail.y, 2.4, rgb); }
     }
+
     // the ball and follow circle while sliding
     if (sl) {
       const p = Math.min(1, (now - sl.start) / sl.dur);

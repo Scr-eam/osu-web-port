@@ -41,7 +41,7 @@ const SPECIAL_GLYPHS = { ",": "comma", ".": "dot", "%": "percent", x: "x" };
 const SPINNER_RADIUS = 118;
 const SPINNER_CENTRE = [PF_W / 2, PF_H / 2];
 const FOLLOW_SPACING = 32;   // playfield units between follow points
-const GRADIENT_STEPS = 3;    // gradient layers between a slider's border and its centre
+const GRADIENT_STEPS = 8;    // smooth gradient layers between a slider's border and its centre
 const TRAIL_MS = 120;        // how long a cursor trail copy lasts
 
 const rgb01 = (c) => [c[0] / 255, c[1] / 255, c[2] / 255];
@@ -213,7 +213,6 @@ export function createRenderer(canvas, overlay) {
   gl.uniform1i(gl.getUniformLocation(prog, "uAtlas"), 0);
 
   gl.enable(gl.BLEND);
-  // Colour blends as before. Alpha keeps the canvas opaque where it was opaque, and stays correct on a transparent canvas.
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
   // Atlas texture. It stays a 1x1 white texel until a skin is set.
@@ -233,26 +232,22 @@ export function createRenderer(canvas, overlay) {
   let blank = new Set();       // names the skin leaves empty on purpose (1x1 images)
   let sliderBorder = null;     // [r, g, b] in 0..1 from skin.ini, or null when unset
   let sliderTrack = null;
-  // null: the opaque playfield colour. A number: the canvas is transparent, under a black veil of that strength.
   let veil = null;
   function setVeil(strength) {
     veil = strength;
   }
   let overlayAboveNumber = false;
-  let hitOverlap = 0;          // HitCircleOverlap, ScoreOverlap and ComboOverlap, in 1x skin pixels
+  let hitOverlap = 0;
   let scoreOverlap = 0;
   let comboOverlap = 0;
-  // The skin's images at their 1x size, for the HUD's own digits and health bar (hud.js).
-  let legacySprites = new Map();   // logical name -> { bmp, w1, h1 }
-  let barFrames = [];              // scorebar-colour-0, -1, ... in order
-  let keyText = null;              // skin.ini's InputOverlayText, [r, g, b] in 0..255, or null
-  let legacyHud = false;           // a legacy skin is loaded (not the Argon look's note sprites)
+  let legacySprites = new Map();
+  let barFrames = [];
+  let keyText = null;
+  let legacyHud = false;
   const hud = createHud();
-  // A digit the skin leaves empty on purpose (a 1 px transparent percent sign, say) still takes its place
-  // in the number, as lazer's does, so it counts as present and draws nothing.
   const EMPTY_DIGIT = { bmp: null, w1: 1, h1: 1 };
   const hudSkin = {
-    active: () => legacyHud,                        // a skin is loaded, so the HUD takes its legacy look
+    active: () => legacyHud,
     sprite: (name) => legacySprites.get(name)
       || (/^(score|combo)-/.test(name) && blank.has(name) ? EMPTY_DIGIT : null),
     overlap: (family) => (family === "combo" ? comboOverlap : family === "scoreentry" ? 1 : scoreOverlap),
@@ -261,8 +256,6 @@ export function createRenderer(canvas, overlay) {
     keyText: () => keyText,
   };
 
-  // Packs the skin's images into one atlas texture and reads the skin.ini values that shape the
-  // picture. skin is the object from loadSkinFile, or null for the default look.
   function setSkin(skin) {
     const images = skin ? skin.images : new Map();
     const scales = skin ? skin.scales : new Map();
@@ -293,7 +286,6 @@ export function createRenderer(canvas, overlay) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
       return;
     }
-    // Shelf packing, tallest images first.
     const items = [];
     for (const [name, bmp] of images) {
       const s = Math.min(1, SPRITE_MAX / Math.max(bmp.width, bmp.height));
@@ -325,8 +317,6 @@ export function createRenderer(canvas, overlay) {
     }
     const atlasH = Math.max(1, y + rowH);
     if (atlasH > gl.getParameter(gl.MAX_TEXTURE_SIZE)) {
-      // Too many or too large images for one texture. The sprite table is already reset, so the
-      // skin shows its flat shapes instead of sampling the previous skin's pixels.
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
       return;
     }
@@ -346,7 +336,6 @@ export function createRenderer(canvas, overlay) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlasCanvas);
   }
 
-  // Instance batch for one draw call.
   let batch = new Float32Array(STRIDE * 4096);
   let n = 0;
   const put = (x, y, hw, hh, c, a, mode, width, uv) => {
@@ -372,11 +361,7 @@ export function createRenderer(canvas, overlay) {
     batch[o + 13] = uv[3];
     n++;
   };
-  // Filled disc (MODE_FILL) or ring (MODE_RING, width = thickness) of radius r.
   const push = (x, y, r, c, a, mode, width) => put(x, y, r, r, c, a, mode, width, NO_UV);
-  // Skin sprite with the given on-screen height, centred on (x, y), rotated by angle. A sprite the
-  // skin marks as blank counts as drawn (nothing is shown). Returns false when the skin has no
-  // such sprite, so the caller can draw the flat shape instead.
   const sprite = (name, x, y, h, c, a, angle = 0) => {
     if (blank.has(name)) return true;
     const s = sprites.get(name);
@@ -386,11 +371,9 @@ export function createRenderer(canvas, overlay) {
     return true;
   };
   const hasSprite = (name) => sprites.has(name);
-  // Sprite names matching re, in frame order (numeric suffix), e.g. sliderb0, sliderb1, ...
   const framesOf = (re) => [...sprites.keys()]
     .filter((k) => re.test(k) && !blank.has(k))
     .sort((x, y) => Number(/(\d+)$/.exec(x)?.[1] ?? 0) - Number(/(\d+)$/.exec(y)?.[1] ?? 0));
-  // On-screen height of a sprite whose 1x size is known, at `scale` playfield units per skin pixel.
   const size1x = (name, scale) => (sprites.get(name)?.h1 || 0) * scale;
 
   const flush = () => {
@@ -401,11 +384,8 @@ export function createRenderer(canvas, overlay) {
     n = 0;
   };
 
-  // Playfield units per 1x skin pixel for a circle of radius rad. Circle sprites, their digits
-  // and the cursor are all sized from the hit circle sprite, as the game does.
   const circleScale = (rad) => (2 * rad) / (sprites.get("hitcircle")?.h1 || 128);
 
-  // Skin glyphs for a text run, or null when the skin lacks one of its characters.
   function glyphsFor(text, family) {
     const out = [];
     for (const ch of text) {
@@ -417,9 +397,6 @@ export function createRenderer(canvas, overlay) {
     return out;
   }
 
-  // Draws text with skin glyphs, centred on (x, y) or aligned to x. scale is playfield units per
-  // 1x skin pixel; gap is the spacing between glyphs in 1x pixels (negative spaces them apart).
-  // Returns false when the skin cannot draw the text, so the caller can draw it as plain text.
   function drawGlyphs(text, family, scale, gap, x, y, align, a) {
     const glyphs = glyphsFor(text, family);
     if (!glyphs) return false;
@@ -437,26 +414,22 @@ export function createRenderer(canvas, overlay) {
     return true;
   }
 
-  // Downsampled slider centre-lines, cached per top-level object until reset().
-  // The polyline's vertices alone are not enough: a straight slider has only two of them, so
-  // the body is resampled along each segment at a fixed spacing.
   const sliderCache = new Map();
   function sliderCentres(index, points, radius) {
     let entry = sliderCache.get(index);
     if (entry) return entry;
-    // Dense enough that the small inner gradient layers stay round.
     const step = Math.max(1, radius * 0.12);
     const out = [];
     if (points.length >= 2) {
       out.push(points[0], points[1]);
-      let carry = 0; // distance already covered since the last emitted disc
+      let carry = 0;
       for (let i = 0; i + 3 < points.length; i += 2) {
         const x0 = points[i];
         const y0 = points[i + 1];
         const x1 = points[i + 2];
         const y1 = points[i + 3];
         const len = Math.hypot(x1 - x0, y1 - y0);
-        let d = step - carry; // distance along this segment to the next disc
+        let d = step - carry;
         while (d <= len) {
           const f = d / len;
           out.push(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f);
@@ -485,15 +458,12 @@ export function createRenderer(canvas, overlay) {
     }
   }
 
-  // frame: { t, data (Float32Array of records), count, colours, preempt, fadeIn, radius,
-  //          sliderPoints(topIndex) -> Float32Array, cursor: {x, y},
-  //          keys: [{ label, down, enabled }], hud: { score, accuracy, combo, health } }
   function draw(frame) {
     resize();
     const { t, data, count, colours, preempt, fadeIn, radius, sliderPoints } = frame;
     gl.viewport(0, 0, canvas.width, canvas.height);
     if (veil === null) gl.clearColor(0, 0, 0, 1);
-    else gl.clearColor(0, 0, 0, veil);          // a black veil over the video: 0 = none, 1 = hidden
+    else gl.clearColor(0, 0, 0, veil);
     gl.clear(gl.COLOR_BUFFER_BIT);
     const view = frame.view || PLAYFIELD_VIEW;
     gl.uniform2f(uSize, view.w, view.h);
@@ -503,27 +473,22 @@ export function createRenderer(canvas, overlay) {
     gl.bindTexture(gl.TEXTURE_2D, atlasTex);
 
     const rec = (i) => data.subarray(i * 16, i * 16 + 16);
-    // The core reports combo colours as 0..255; the shader wants 0..1.
     const col = (idx) => {
       const c = colours[idx % colours.length];
       return c ? rgb01(c) : WHITE;
     };
     const appearAt = (start) => Math.min(1, Math.max(0, (t - (start - preempt)) / fadeIn));
-    // Hidden (OsuModHidden): a circle fades in over 0.4 of its preempt time, then out from 0.6 before its start
-    // over 0.3 of it, so it is gone 0.3 preempt before the hit time.
     const hidden = !!frame.hidden;
     const hiddenAt = (start) => {
       const inA = Math.min(1, Math.max(0, (t - (start - preempt)) / (0.4 * preempt)));
       const outA = Math.min(1, Math.max(0, (t - (start - 0.6 * preempt)) / (0.3 * preempt)));
       return inA * (1 - outA);
     };
-    // A hidden slider body keeps the normal fade-in, then fades out with an ease-out to the end of the slider.
     const hiddenBody = (start, end) => {
       const from = start - preempt + fadeIn;
       const k = Math.min(1, Math.max(0, (t - from) / Math.max(1, end - from)));
       return (1 - k) * (1 - k);
     };
-    // Fade-in, then fade-out after judgement (hits fade slower than misses).
     const fadeAt = (start, judged, judgedAt, res) => {
       let a = appearAt(start);
       if (judged) {
@@ -536,8 +501,8 @@ export function createRenderer(canvas, overlay) {
       push(x, y, radius * 0.28, WHITE, 0.95 * a, MODE_FILL, 0);
       push(x, y, radius * 0.2, c, 0.9 * a, MODE_FILL, 0);
     };
-    const px = circleScale(radius); // skin pixels -> playfield units, for sprites sized from circles
-    const numbers = [];             // digits the skin cannot draw; the overlay draws them as text
+    const px = circleScale(radius);
+    const numbers = [];
 
     const top = frame.top ?? count;
     const snaking = frame.snaking || {};
@@ -548,7 +513,7 @@ export function createRenderer(canvas, overlay) {
     for (let i = 0; i + 1 < top; i++) {
       const a = rec(i);
       const b = rec(i + 1);
-      if (b[7] === 1 || a[0] === KIND.SPINNER || b[0] === KIND.SPINNER) continue; // a new combo has none
+      if (b[7] === 1 || a[0] === KIND.SPINNER || b[0] === KIND.SPINNER) continue;
       if (t < a[4] || t > b[4]) continue;
       const fade = Math.min(1, (t - a[4]) / (preempt * 0.5)) * Math.min(1, (b[4] - t) / 100);
       const [ex, ey] = a[0] === KIND.SLIDER ? sliderEnd(a[15], sliderPoints) : [a[1], a[2]];
@@ -568,10 +533,16 @@ export function createRenderer(canvas, overlay) {
       }
     }
 
-    // Pass 1: slider bodies, latest first so the earliest slider ends up on top. The body follows
-    // lazer's legacy look: a border band (SliderBorder, white by default), then a gradient of the
-    // track colour from the edge to the centre. Each layer is drawn over the whole path before the
-    // next, so overlapping points never blend. Snaking in and out trims the path.
+    // Helper to check if a slider has repeats (reverses)
+    const sliderHasReverses = (sliderIndex) => {
+      for (let j = 0; j < count; j++) {
+        const other = rec(j);
+        if (other[0] === KIND.REPEAT && other[15] === sliderIndex) return true;
+      }
+      return false;
+    };
+
+    // Pass 1: slider bodies
     const bg = [0, 0, 0];
     for (let i = count - 1; i >= 0; i--) {
       const r = rec(i);
@@ -584,28 +555,49 @@ export function createRenderer(canvas, overlay) {
       if (a <= 0) continue;
       const rad = r[3];
       const full = sliderCentres(r[15], sliderPoints(r[15]), rad);
-      const f1 = snaking.in ? Math.min(1, Math.max(0, (t - (start - preempt)) / (preempt / 3))) : 1;
-      const f0 = snaking.out && t > start ? Math.min(1, Math.max(0, (t - start) / Math.max(1, end - start))) : 0;
-      const pts = snaking.in || snaking.out ? subPath(full, f0, f1) : full;
+      
+      const hasReverses = sliderHasReverses(r[15]);
+      // Sliders with reverse arrows / repeats do not snake in or out in osu!lazer
+      const f1 = (snaking.in && !hasReverses) ? Math.min(1, Math.max(0, (t - (start - preempt)) / preempt)) : 1;
+      const f0 = (snaking.out && t > start && !hasReverses) ? Math.min(1, Math.max(0, (t - start) / Math.max(1, end - start))) : 0;
+      
+      const pts = (snaking.in || snaking.out) && !hasReverses ? subPath(full, f0, f1) : full;
       if (pts.length < 2) continue;
-      const body = (sliderTrack || col(r[6])).map((c, k) => c * 0.7 + bg[k] * 0.3); // legacy track opacity
-      const edge = body.map((c) => c * 0.9);
-      const core = body.map((c) => Math.min(1, c * 1.125 + 0.25));
+
+      const defaultTrack = [32 / 255, 32 / 255, 32 / 255];
+      const baseTrack = sliderTrack || defaultTrack;
+      const body = baseTrack.map((c) => c * 0.85 + bg[0] * 0.15);
+      const edge = body.map((c) => c * 0.65);
+      const core = body.map((c) => Math.min(1, c * 1.35 + 0.15));
+
       const bw = borderWidth(rad);
-      const layers = [[rad, sliderBorder || WHITE]];
+      const numPts = pts.length >> 1;
+
+      // Draw border layer across all points
+      const borderCol = shade(sliderBorder || WHITE, a);
+      const borderStride = Math.max(1, Math.round((0.25 * rad) / Math.max(1, rad * 0.12)));
+      for (let k = 0; k < pts.length; k += 2 * borderStride) {
+        push(pts[k], pts[k + 1], rad, borderCol, 1, MODE_FILL, 0);
+      }
+      push(pts[pts.length - 2], pts[pts.length - 1], rad, borderCol, 1, MODE_FILL, 0);
+
+      // Draw gradient layers (skip inner layers on endpoints when path is long enough to prevent concentric rings)
       for (let s = 0; s < GRADIENT_STEPS; s++) {
         const f = s / (GRADIENT_STEPS - 1);
         const mix = [0, 1, 2].map((k) => edge[k] + (core[k] - edge[k]) * f);
-        layers.push([((rad - bw) * (GRADIENT_STEPS - s)) / GRADIENT_STEPS, mix]);
-      }
-      for (const [lr, lc] of layers) {
-        // Each layer is sampled about every quarter of its own radius: the small inner layers need
-        // the denser points to stay round, the outer ones do not. Every disc costs fill time.
+        const lr = ((rad - bw) * (GRADIENT_STEPS - s)) / GRADIENT_STEPS;
+        const c = shade(mix, a);
         const stride = Math.max(1, Math.round((0.25 * lr) / Math.max(1, rad * 0.12)));
-        const c = shade(lc, a);
-        const last = pts.length - 2;
-        for (let k = 0; k < last; k += 2 * stride) push(pts[k], pts[k + 1], lr, c, 1, MODE_FILL, 0);
-        push(pts[last], pts[last + 1], lr, c, 1, MODE_FILL, 0);
+
+        const startIdx = (s > 0 && numPts >= 3) ? 2 : 0;
+        const endIdx = (s > 0 && numPts >= 3) ? pts.length - 4 : pts.length - 2;
+
+        for (let k = startIdx; k <= endIdx; k += 2 * stride) {
+          push(pts[k], pts[k + 1], lr, c, 1, MODE_FILL, 0);
+        }
+        if (s === 0 || numPts < 3) {
+          push(pts[pts.length - 2], pts[pts.length - 1], lr, c, 1, MODE_FILL, 0);
+        }
       }
     }
     flush();
@@ -649,11 +641,9 @@ export function createRenderer(canvas, overlay) {
           push(cx, cy, R, [0, 0, 0], 0.35 * a, MODE_FILL, 0);
         }
         if (t < start) {
-          // The spinner's approach ring fades in at the spinner's own size, so it stays on the playfield.
           const p = Math.min(1, Math.max(0, (t - (start - preempt)) / preempt));
           sprite("spinner-approachcircle", cx, cy, 2 * R, WHITE, 0.6 * a * p);
         }
-        // The ring is dim; the part already spun is drawn bright, from the top, clockwise.
         if (!sprite("spinner-circle", cx, cy, 2 * R, WHITE, 0.4 * a)) push(cx, cy, R, WHITE, 0.4 * a, MODE_RING, 2.5);
         const prog = Math.min(1, Math.max(0, r[11]));
         if (prog > 0) {
@@ -667,9 +657,8 @@ export function createRenderer(canvas, overlay) {
     }
     flush();
 
-    // Pass 3: circles and slider heads, latest first so the earliest object is on top. The
-    // approach circle and combo number belong to their object and go right after its body.
-    const hitLighting = frame.hitLighting !== false;      // the flash's size (settings)
+    // Pass 3: circles and slider heads, latest first.
+    const hitLighting = frame.hitLighting !== false;
     for (let i = count - 1; i >= 0; i--) {
       const r = rec(i);
       const kind = r[0];
@@ -679,8 +668,6 @@ export function createRenderer(canvas, overlay) {
       const judged = r[8] !== 0;
       const hit = judged && r[10] >= RES.MEH && r[10] <= RES.PERFECT;
       const dt = judged ? t - r[9] : 0;
-      // A hit: the note jiggles down to 0.8 with a damped wobble over hitFade ms, its body fades over the same
-      // time, and a flash glows at the start and fades over at least 300 ms. A miss just fades quickly.
       const fadeMs = Math.max(20, frame.hitFade ?? 200);
       const flashMs = Math.max(fadeMs, 300);
       if (judged && (hit ? dt > flashMs : dt > 120)) continue;
@@ -700,7 +687,6 @@ export function createRenderer(canvas, overlay) {
       const y = r[2];
       const rad = r[3];
       const c = col(r[6]);
-      // Slider heads use the slider head sprite when the skin has one, else the hit circle.
       const body = kind === KIND.HEAD && hasSprite("sliderstartcircle") ? "sliderstartcircle" : "hitcircle";
       const overlay = hasSprite(`${body}overlay`) ? `${body}overlay` : "hitcircleoverlay";
       const d = 2 * rad * s;
@@ -730,17 +716,15 @@ export function createRenderer(canvas, overlay) {
         drawNumber();
       }
       drawFlash();
-      if (!judged && t <= start && !hidden) {       // hidden hides the approach circle too
+      if (!judged && t <= start && !hidden) {
         const p = Math.min(1, Math.max(0, (t - (start - preempt)) / preempt));
-        // The approach circle starts at 4x the note and shrinks to 1 over the preempt time (DrawableHitCircle.cs),
-        // and its own sprite is 128/118 of the note (DefaultApproachCircle.cs), so it ends at APPROACH_START.
         const approach = rad * APPROACH_START * (1 + 3 * (1 - p));
         if (!sprite("approachcircle", x, y, 2 * approach, c, 0.9 * a)) push(x, y, approach, c, 0.9 * a, MODE_RING, 3);
       }
     }
     flush();
 
-    // Pass 4: slider balls, and the follow circle while the pointer tracks the ball.
+    // Pass 4: slider balls, and follow circle.
     for (let i = 0; i < count; i++) {
       const r = rec(i);
       if (r[0] !== KIND.SLIDER || t < r[4] || t > r[5]) continue;
@@ -752,7 +736,6 @@ export function createRenderer(canvas, overlay) {
       }
       const c = col(r[6]);
       if (ballFrames.length) {
-        // The ball animates through the skin's frames, then its overlays (nd tinted, spec white).
         const name = ballFrames[Math.floor(t / (1000 / 60)) % ballFrames.length];
         sprite(name, x, y, size1x(name, px), c, 1);
         if (hasSprite("sliderb-nd")) sprite("sliderb-nd", x, y, size1x("sliderb-nd", px), c, 1);
@@ -764,7 +747,6 @@ export function createRenderer(canvas, overlay) {
     }
     flush();
 
-    // Cursor trail (fading copies of the cursor sprite), then the cursor, scaled and rotated as set.
     if (frame.cursor) {
       const cur = frame.cursor;
       const scale = cur.size || 1;
@@ -787,16 +769,14 @@ export function createRenderer(canvas, overlay) {
 
   function drawOverlay(frame, rec, count, numbers, view) {
     const { t, preempt, radius } = frame;
-    const sx = overlay.width / view.w;          // overlay pixels per playfield unit
+    const sx = overlay.width / view.w;
     const sy = overlay.height / view.h;
-    const ox = (x) => (x - view.x) * sx;        // playfield x -> overlay pixels
+    const ox = (x) => (x - view.x) * sx;
     const oy = (y) => (y - view.y) * sy;
     ctx2d.clearRect(0, 0, overlay.width, overlay.height);
     ctx2d.textAlign = "center";
     ctx2d.textBaseline = "middle";
 
-    // Flashlight: the playfield outside a soft circle round the cursor is covered. A black layer is cut open
-    // by a radial gradient: clear inside 80% of the radius, fading out at the edge.
     if (frame.flashlight) {
       const fl = frame.flashlight;
       const cx = ox(fl.x);
@@ -814,13 +794,11 @@ export function createRenderer(canvas, overlay) {
       ctx2d.globalCompositeOperation = "source-over";
     }
 
-    // Low health dims the playfield (the game fades it when health is low).
     if (frame.dim > 0) {
       ctx2d.fillStyle = `rgba(0,0,0,${Math.min(1, frame.dim)})`;
       ctx2d.fillRect(0, 0, overlay.width, overlay.height);
     }
 
-    // Numbers the skin glyphs could not draw (missing glyphs, or no digit sprites at all).
     ctx2d.font = `600 ${Math.round(radius * sy * 0.9)}px system-ui, sans-serif`;
     ctx2d.fillStyle = "#fff";
     for (const num of numbers) {
@@ -829,8 +807,6 @@ export function createRenderer(canvas, overlay) {
     }
     ctx2d.globalAlpha = 1;
 
-    // Judgement popups for the last 500 ms: skin images when present, otherwise text.
-    // A result the skin leaves blank shows nothing.
     const labels = { [RES.GREAT]: "300", [RES.PERFECT]: "300g", [RES.OK]: "100", [RES.MEH]: "50", [RES.MISS]: "X" };
     const images = { [RES.GREAT]: "hit300", [RES.PERFECT]: "hit300g", [RES.OK]: "hit100", [RES.MEH]: "hit50", [RES.MISS]: "hit0" };
     ctx2d.font = `700 ${Math.round(14 * sy)}px system-ui, sans-serif`;
@@ -857,15 +833,12 @@ export function createRenderer(canvas, overlay) {
     }
     ctx2d.globalAlpha = 1;
 
-    // The skip-intro hint, while the intro can be skipped.
     if (frame.skipHint) {
       ctx2d.font = `600 ${Math.round(16 * sy)}px system-ui, sans-serif`;
       ctx2d.fillStyle = "rgba(255,255,255,0.8)";
       ctx2d.fillText(frame.skipHint, ox(PF_W / 2), oy(PF_H * 0.8));
     }
 
-    // The HUD: score, accuracy, combo, health, mods and keys, drawn above the playfield layers.
-    // The overlay is the whole canvas, so the HUD works in its pixels.
     if (frame.hud) {
       ctx2d.save();
       hud.draw(ctx2d, {
@@ -879,11 +852,10 @@ export function createRenderer(canvas, overlay) {
       });
       ctx2d.restore();
     }
-    // The resume prompt, above the HUD as lazer's resume overlay is: the orange cursor where the game cursor
-    // was, the cursor following the pointer, and the message.
+
     if (frame.resume) {
       const r = frame.resume;
-      const cpx = circleScale(radius);            // skin pixels -> playfield units, as the game cursor is sized
+      const cpx = circleScale(radius);
       const size = r.size || 1;
       if (r.pointer) promptCursor(ox(r.pointer.x), oy(r.pointer.y), cpx * sy * size, 4 * sy * size, [1, 1, 1], 1);
       if (r.alpha > 0) {
@@ -893,8 +865,6 @@ export function createRenderer(canvas, overlay) {
     }
   }
 
-  // The skin's cursor (or a plain dot without one), centred at (x, y) on the overlay, `k` overlay pixels per
-  // skin pixel (or a dot of radius dotR), tinted by rgb (0..1) as lazer's Colour multiplies a sprite.
   let tintCanvas = null;
   function promptCursor(x, y, k, dotR, rgb, alpha) {
     const s = legacySprites.get("cursor");
@@ -929,7 +899,6 @@ export function createRenderer(canvas, overlay) {
     ctx2d.restore();
   }
 
-  // Call when a different beatmap is loaded: cached slider centre-lines belong to the old map.
   function reset() {
     sliderCache.clear();
     hud.reset();
