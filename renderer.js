@@ -603,7 +603,7 @@ export function createRenderer(canvas, overlay) {
     flush();
 
     // Pass 2: slider ticks, repeat arrows and tails, then the spinner.
-    for (let i = 0; i < count; i++) {
+    for (let i = count - 1; i >= 0; i--) {
       const r = rec(i);
       const kind = r[0];
       if (kind === KIND.TICK || kind === KIND.REPEAT || kind === KIND.TAIL) {
@@ -665,23 +665,38 @@ export function createRenderer(canvas, overlay) {
       if (kind !== KIND.CIRCLE && kind !== KIND.HEAD) continue;
       const start = r[4];
       if (t < start - preempt) continue;
+      
       const judged = r[8] !== 0;
       const hit = judged && r[10] >= RES.MEH && r[10] <= RES.PERFECT;
-      const dt = judged ? t - r[9] : 0;
-      const fadeMs = Math.max(20, frame.hitFade ?? 200);
-      const flashMs = Math.max(fadeMs, 300);
-      if (judged && (hit ? dt > flashMs : dt > 120)) continue;
+      
+      // Equivalent to osu!lazer's HitStateUpdateTime / state transition timing
+      const hitTime = judged ? r[9] : start;
+      const dt = judged ? t - hitTime : 0;
+      
+      // Increased timing windows matching lazer's transform duration bounds
+      const fadeMs = Math.max(20, frame.hitFade ?? 300);
+      const flashMs = Math.max(fadeMs, 350);
+      
+      // Extend lifetime tracking dynamically based on transform length (matching DHO behavior)
+      const maxLifeMs = hit ? flashMs : 120;
+      if (judged && dt > maxLifeMs) continue;
+      
       let a = hidden && !judged ? hiddenAt(start) : appearAt(start);
       let s = 1;
       let flash = 0;
+      
+      // ArmedState handling equivalent to UpdateHitStateTransforms
       if (judged && hit) {
+        // DrawableHitObject Hit State Transforms (Elastic scaling & quadratic fade)
         const u = Math.min(1, dt / fadeMs);
-        s = 1 - 0.2 * (1 - Math.exp(-6 * u) * Math.cos(9 * u));
-        a *= (1 - u) ** 2;
-        flash = Math.min(1, dt / 60) * Math.max(0, 1 - dt / flashMs);
+        s = 1 + 0.4 * Math.sin(u * Math.PI * 1.2) * (1 - u); 
+        a *= (1 - u) * (1 - u); 
+        flash = Math.max(0, 1 - u * 1.3); 
       } else if (judged) {
+        // ArmedState.Miss fade out
         a *= Math.max(0, 1 - dt / 120);
       }
+      
       if (a <= 0 && flash <= 0) continue;
       const x = r[1];
       const y = r[2];
@@ -691,6 +706,7 @@ export function createRenderer(canvas, overlay) {
       const overlay = hasSprite(`${body}overlay`) ? `${body}overlay` : "hitcircleoverlay";
       const d = 2 * rad * s;
       const rr = rad * s;
+
       const drawBody = () => {
         if (!sprite(body, x, y, d, c, 0.95 * a)) push(x, y, rr, c, 0.95 * a, MODE_FILL, 0);
       };
@@ -698,7 +714,10 @@ export function createRenderer(canvas, overlay) {
         if (!sprite(overlay, x, y, d, WHITE, 0.95 * a)) push(x, y, rr, WHITE, 0.95 * a, MODE_RING, 4);
       };
       const drawFlash = () => {
-        if (flash > 0) sprite("glow", x, y, 2 * rad * (hitLighting ? 2.6 : 1.9), c, 0.9 * flash);
+        if (hitLighting && flash > 0) {
+          // Renders the glowing expansion aura identical to lazer's hit state feedback
+          sprite("glow", x, y, 2 * rad * (1.5 + (1 - flash) * 1.2), c, 0.85 * flash);
+        }
       };
       const drawNumber = () => {
         if (judged) return;
@@ -706,6 +725,7 @@ export function createRenderer(canvas, overlay) {
           numbers.push({ text: String(r[7]), x, y, a });
         }
       };
+
       if (overlayAboveNumber) {
         drawBody();
         drawNumber();
@@ -716,6 +736,7 @@ export function createRenderer(canvas, overlay) {
         drawNumber();
       }
       drawFlash();
+
       if (!judged && t <= start && !hidden) {
         const p = Math.min(1, Math.max(0, (t - (start - preempt)) / preempt));
         const approach = rad * APPROACH_START * (1 + 3 * (1 - p));
